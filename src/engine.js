@@ -723,13 +723,17 @@ export class Game {
     // the engine stays DOM-free and never waits on the network.
     const arcade = typeof globalThis !== 'undefined' ? globalThis.Arcade : null;
     if (arcade) {
-      arcade.submitScore('nolimit', summary.bestScore, {
-        ante: summary.ante,
-        won: !!won,
-        wheel: summary.wheel,
-        stake: summary.stake,
-        spins: summary.spins,
-        seed: summary.seed
+      arcade.submitScore('nolimit', {
+        score: summary.bestScore,
+        metrics: { ante: summary.ante, tables: this.stats.roundsWon },
+        meta: {
+          ante: summary.ante,
+          won: !!won,
+          wheel: summary.wheel,
+          stake: summary.stake,
+          spins: summary.spins,
+          seed: summary.seed
+        }
       });
     }
   }
