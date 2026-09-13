@@ -738,6 +738,78 @@ html[data-arcade-game="hub"] {
   .ac-modal__box, .ac-toast { animation: none; }
   .ac-btn { transition: none; }
 }
+
+/* ============================================================================
+   Progression
+   ========================================================================= */
+
+.ac-purse {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ac-s2);
+  padding-bottom: var(--ac-s3);
+}
+.ac-purse__icon { font-size: var(--ac-fs-lg); color: var(--ac-gold); }
+.ac-purse__amount { font-family: var(--ac-font-num); font-size: var(--ac-fs-xl); color: var(--ac-gold); }
+.ac-purse__label { font-size: var(--ac-fs-tiny); color: var(--ac-ink-dim); }
+
+.ac-unlocks { display: flex; flex-direction: column; gap: var(--ac-s2); }
+.ac-unlock {
+  display: flex;
+  align-items: center;
+  gap: var(--ac-s3);
+  padding: var(--ac-s3);
+  background: var(--ac-surface-2);
+  border: 1px solid transparent;
+  border-radius: var(--ac-r-sm);
+}
+/* Owned reads as settled rather than loud: the interesting rows are the ones
+   you have not bought yet. */
+.ac-unlock.is-owned { border-color: var(--ac-good); background: rgba(63, 169, 107, .10); }
+.ac-unlock__text { flex: 1; min-width: 0; }
+.ac-unlock__name { font-size: var(--ac-fs-sm); font-weight: 700; }
+.ac-unlock__desc { font-size: var(--ac-fs-tiny); color: var(--ac-ink-dim); line-height: 1.5; margin-top: 2px; }
+.ac-unlock__owned {
+  font-size: var(--ac-fs-micro);
+  letter-spacing: var(--ac-track-caps);
+  text-transform: uppercase;
+  color: var(--ac-good);
+  flex: none;
+}
+
+.ac-achv__group { margin: var(--ac-s5) 0 var(--ac-s2); }
+.ac-achv__mark { font-size: var(--ac-fs-lg); color: var(--ac-gold); flex: none; width: 22px; text-align: center; }
+.ac-achv__mark.is-locked { color: var(--ac-line); }
+
+.ac-achvbar {
+  height: 6px;
+  background: var(--ac-surface-0);
+  border-radius: var(--ac-r-pill);
+  overflow: hidden;
+  margin-bottom: var(--ac-s4);
+}
+.ac-achvbar__fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--ac-gold-deep), var(--ac-gold));
+  transition: width var(--ac-slow);
+}
+
+/* The achievement toast is the one moment worth interrupting for. */
+.ac-toast--achv {
+  display: flex;
+  align-items: center;
+  gap: var(--ac-s3);
+  border-left-color: var(--ac-gold);
+  background: linear-gradient(90deg, rgba(217, 180, 91, .16), var(--ac-surface-1) 70%);
+  padding: var(--ac-s3) var(--ac-s4);
+}
+.ac-achv__kicker {
+  font-size: var(--ac-fs-micro);
+  letter-spacing: var(--ac-track-caps);
+  text-transform: uppercase;
+  color: var(--ac-gold);
+}
+.ac-achv__name { font-size: var(--ac-fs-md); font-weight: 800; margin-top: 1px; }
 </style>
 <style>
 /* ------------------------------------------------------------------ */
@@ -2470,6 +2542,497 @@ body.cb .pocket-pick.black::after {
 })(typeof window !== 'undefined' ? window : this);
 </script>
 <script>
+// ===== shared/js/arcade-catalogue.js
+/* ============================================================================
+   arcade-catalogue.js — what there is to earn, unlock and achieve.
+
+   Pure data. arcade-progress.js is the machinery that reads it, so adding a
+   currency, an unlock, a difficulty or an achievement is an edit here and
+   nothing else.
+
+   Every achievement carries a `steam` id. Nothing reads it yet — it is the
+   seam that lets a Steam build map these onto real achievements later without
+   renaming anything players have already earned.
+   ========================================================================= */
+(function (global) {
+  'use strict';
+
+  var Arcade = global.Arcade = global.Arcade || {};
+
+  /* --------------------------------------------------------------------
+     Per-game progression.
+
+       currency   { id, label, icon } — one per game, earned by playing
+       earn(s)    -> how much a finished run is worth, from its summary
+       unlocks[]  { id, label, desc, cost, effect } — bought with currency
+       difficulties[] { id, label } — the ladder a clear is recorded against
+
+     `effect` is a free-form tag the game itself reads. The catalogue says
+     what exists; the game decides what it means.
+     -------------------------------------------------------------------- */
+  Arcade.progression = {
+
+    pegfall: {
+      currency: { id: 'shards', label: 'Shards', icon: '◈' },
+      // Depth is worth more than raw score, so a deep careful run pays better
+      // than one lucky floor.
+      earn: function (s) {
+        return Math.max(1, Math.floor((s.score || 0) / 500) + (s.floor || 0) * 2);
+      },
+      unlocks: [
+        { id: 'ball_bomb', label: 'Bomb ball', cost: 20, effect: 'ball:bomb',
+          desc: 'Adds the Bomb ball to the shop pool, without waiting for floor 3.' },
+        { id: 'ball_ghost', label: 'Ghost ball', cost: 35, effect: 'ball:ghost',
+          desc: 'Adds the Ghost ball to the shop pool, without waiting for floor 5.' },
+        { id: 'ball_magnet', label: 'Magnet ball', cost: 55, effect: 'ball:magnet',
+          desc: 'Adds the Magnet ball to the shop pool, without waiting for floor 7.' },
+        { id: 'ball_void', label: 'Void ball', cost: 80, effect: 'ball:voidball',
+          desc: 'Adds the Void ball to the shop pool, without waiting for floor 9.' },
+        { id: 'deep_pockets', label: 'Deep Pockets', cost: 45, effect: 'gold:4',
+          desc: 'Start every run with 4 extra gold.' }
+      ],
+      /* PEGFALL has no difficulty ladder and no win condition — it is endless
+         and ends when you fall short. One tier keeps the shape of the system
+         without inventing a completion bar the game does not have. */
+      difficulties: [{ id: 'standard', label: 'Standard' }]
+    },
+
+    onemoreroll: {
+      currency: { id: 'pips', label: 'Pips', icon: '⁙' },
+      earn: function (s) {
+        return Math.max(1, (s.ante || 0) * 3 + Math.floor((s.score || 0) / 2000) + (s.won ? 25 : 0));
+      },
+      unlocks: [
+        { id: 'lucky_start', label: 'Lucky Start', cost: 25, effect: 'money:4',
+          desc: 'Start every run with $4 extra.' },
+        { id: 'sixth_die', label: 'Sixth Die', cost: 70, effect: 'dice:1',
+          desc: 'Start every run with one extra die.' },
+        { id: 'deep_pockets', label: 'Deep Pockets', cost: 45, effect: 'consumable:1',
+          desc: 'One more consumable slot, every run.' }
+      ],
+      difficulties: [
+        { id: '1', label: 'White Peril' }, { id: '2', label: 'Red Peril' },
+        { id: '3', label: 'Green Peril' }, { id: '4', label: 'Black Peril' },
+        { id: '5', label: 'Blue Peril' }, { id: '6', label: 'Purple Peril' },
+        { id: '7', label: 'Orange Peril' }, { id: '8', label: 'Gold Peril' }
+      ]
+    },
+
+    nolimit: {
+      currency: { id: 'markers', label: 'Markers', icon: '◉' },
+      earn: function (s) {
+        return Math.max(1, (s.ante || 0) * 3 + (s.tables || 0) * 2 + (s.won ? 25 : 0));
+      },
+      unlocks: [
+        { id: 'deep_purse', label: 'Deep Purse', cost: 25, effect: 'money:4',
+          desc: 'Start every run with $4 extra.' },
+        { id: 'spare_nudge', label: 'Spare Nudge', cost: 60, effect: 'nudge:1',
+          desc: 'One more Nudge every round.' },
+        { id: 'house_edge', label: 'House Edge', cost: 45, effect: 'chips:1',
+          desc: 'One more chip to place every round.' }
+      ],
+      difficulties: [
+        { id: 'white', label: 'White Stake' }, { id: 'red', label: 'Red Stake' },
+        { id: 'green', label: 'Green Stake' }, { id: 'black', label: 'Black Stake' },
+        { id: 'blue', label: 'Blue Stake' }, { id: 'purple', label: 'Purple Stake' },
+        { id: 'orange', label: 'Orange Stake' }, { id: 'gold', label: 'Gold Stake' }
+      ]
+    }
+  };
+
+  /* --------------------------------------------------------------------
+     Achievements.
+
+       id     stable for ever — it is the save key
+       game   null for arcade-wide ones
+       label  what the player sees
+       desc   how to get it
+       secret true hides the description until earned
+       steam  the id a Steam build would map this onto
+       test(s, store) evaluated when a run ends; omit for ones the game
+              awards directly with Arcade.progress.award()
+     -------------------------------------------------------------------- */
+  Arcade.achievements = [
+    /* ---- arcade-wide ---- */
+    { id: 'first_run', game: null, label: 'Taking a Seat', steam: 'ACH_FIRST_RUN',
+      desc: 'Finish a run in any game.',
+      test: function (s, st) { return st.totals.runs >= 1; } },
+    { id: 'house_regular', game: null, label: 'House Regular', steam: 'ACH_HOUSE_REGULAR',
+      desc: 'Finish 25 runs across the arcade.',
+      test: function (s, st) { return st.totals.runs >= 25; } },
+    { id: 'full_floor', game: null, label: 'Working the Floor', steam: 'ACH_FULL_FLOOR',
+      desc: 'Finish a run in all three games.',
+      test: function (s, st) {
+        return Arcade.games.every(function (g) { return (st.games[g.id] || {}).runs > 0; });
+      } },
+
+    /* ---- PEGFALL ---- */
+    { id: 'pegfall_floor5', game: 'pegfall', label: 'Down the Board', steam: 'ACH_PEGFALL_FLOOR_5',
+      desc: 'Reach floor 5.', test: function (s) { return (s.floor || 0) >= 5; } },
+    { id: 'pegfall_floor10', game: 'pegfall', label: 'Basement Dweller', steam: 'ACH_PEGFALL_FLOOR_10',
+      desc: 'Reach floor 10.', test: function (s) { return (s.floor || 0) >= 10; } },
+    { id: 'pegfall_bigball', game: 'pegfall', label: 'One Good Drop', steam: 'ACH_PEGFALL_BIG_BALL',
+      desc: 'Score 1,000 with a single ball.', test: function (s) { return (s.bestBall || 0) >= 1000; } },
+    { id: 'pegfall_collector', game: 'pegfall', label: 'Magpie', steam: 'ACH_PEGFALL_COLLECTOR',
+      desc: 'Hold 6 relics at once.', test: function (s) { return (s.relics || 0) >= 6; } },
+
+    /* ---- One More Roll ---- */
+    { id: 'omr_win', game: 'onemoreroll', label: 'One More Win', steam: 'ACH_OMR_WIN',
+      desc: 'Beat The Grand.', test: function (s) { return !!s.won; } },
+    { id: 'omr_bigturn', game: 'onemoreroll', label: 'Hot Dice', steam: 'ACH_OMR_BIG_TURN',
+      desc: 'Score 10,000 in a single turn.', test: function (s) { return (s.score || 0) >= 10000; } },
+    { id: 'omr_ante5', game: 'onemoreroll', label: 'Deep in the Night', steam: 'ACH_OMR_ANTE_5',
+      desc: 'Reach ante 5.', test: function (s) { return (s.ante || 0) >= 5; } },
+    // Awarded in the moment rather than at run end: it is about a thing you
+    // did, not a number you finished on.
+    { id: 'omr_encore', game: 'onemoreroll', label: 'Encore!', steam: 'ACH_OMR_ENCORE',
+      desc: 'Score the same category twice in one blind.' },
+
+    /* ---- No Limit ---- */
+    { id: 'nolimit_win', game: 'nolimit', label: 'The House Folds', steam: 'ACH_NOLIMIT_WIN',
+      desc: 'Take eight antes off the house.', test: function (s) { return !!s.won; } },
+    { id: 'nolimit_bigspin', game: 'nolimit', label: 'Let It Ride', steam: 'ACH_NOLIMIT_BIG_SPIN',
+      desc: 'Score 100,000 on a single spin.', test: function (s) { return (s.score || 0) >= 100000; } },
+    { id: 'nolimit_ante5', game: 'nolimit', label: 'Still Standing', steam: 'ACH_NOLIMIT_ANTE_5',
+      desc: 'Reach ante 5.', test: function (s) { return (s.ante || 0) >= 5; } },
+    { id: 'nolimit_carve', game: 'nolimit', label: 'Rewriting the Odds', steam: 'ACH_NOLIMIT_CARVE',
+      desc: 'Remove 10 pockets from the wheel in one run.',
+      test: function (s) { return (s.pocketsRemoved || 0) >= 10; } }
+  ];
+
+  Arcade.achievementById = function (id) {
+    for (var i = 0; i < Arcade.achievements.length; i++) {
+      if (Arcade.achievements[i].id === id) return Arcade.achievements[i];
+    }
+    return null;
+  };
+
+  Arcade.progressionOf = function (gameId) {
+    return Arcade.progression[gameId] || null;
+  };
+})(typeof window !== 'undefined' ? window : this);
+</script>
+<script>
+// ===== shared/js/arcade-progress.js
+/* ============================================================================
+   arcade-progress.js — the meta layer that outlives a run.
+
+   Currencies, purchased unlocks, achievements, difficulty clears and lifetime
+   totals, for every game in the arcade. Each game already keeps its own
+   profile (records, discovered content, its own threshold unlocks); this sits
+   alongside those rather than replacing them, so nothing that already works
+   has to be rewritten.
+
+   Stored in localStorage under one key. It is deliberately local: the games
+   are local-first, and a progression that vanishes when the network does is
+   worse than one that never left the browser. The store is a narrow API over
+   a plain object, so a cloud-backed implementation can be dropped in behind it
+   later without callers changing.
+
+   Steam: nothing here talks to Steam, but everything a Steam build needs is
+   recorded in the shape it would want — stable achievement ids, per-difficulty
+   clears, and lifetime stats. `snapshotForSteam()` is the seam.
+   ========================================================================= */
+(function (global) {
+  'use strict';
+
+  var Arcade = global.Arcade = global.Arcade || {};
+
+  var KEY = 'arcade.progress.v1';
+  var VERSION = 1;
+
+  function blank() {
+    return {
+      version: VERSION,
+      totals: { runs: 0, wins: 0 },
+      achievements: {},           // id -> epoch ms earned
+      games: {}                   // gameId -> { runs, wins, best, currency:{}, unlocked:{}, clears:{} }
+    };
+  }
+
+  function blankGame() {
+    return { runs: 0, wins: 0, best: 0, currency: {}, unlocked: {}, clears: {} };
+  }
+
+  var data = null;
+  var listeners = [];
+
+  function load() {
+    var stored = null;
+    try { stored = JSON.parse(global.localStorage.getItem(KEY) || 'null'); } catch (e) { stored = null; }
+    data = blank();
+    if (stored && stored.version === VERSION) {
+      data.totals = Object.assign(data.totals, stored.totals || {});
+      data.achievements = stored.achievements || {};
+      data.games = stored.games || {};
+    }
+    return data;
+  }
+
+  function save() {
+    try { global.localStorage.setItem(KEY, JSON.stringify(state())); }
+    catch (e) { /* private mode: progression is in-memory for this session */ }
+    emit();
+  }
+
+  function state() { if (!data) load(); return data; }
+
+  function game(gameId) {
+    var s = state();
+    if (!s.games[gameId]) s.games[gameId] = blankGame();
+    // A game saved by an older build may be missing newer sub-objects.
+    var g = s.games[gameId];
+    if (!g.currency) g.currency = {};
+    if (!g.unlocked) g.unlocked = {};
+    if (!g.clears) g.clears = {};
+    return g;
+  }
+
+  function emit() {
+    listeners.slice().forEach(function (fn) {
+      try { fn(state()); } catch (e) { /* a bad listener must not stop the rest */ }
+    });
+  }
+
+  /* ------------------------------------------------------------ currency */
+
+  function currencyId(gameId) {
+    var p = Arcade.progressionOf(gameId);
+    return p ? p.currency.id : 'points';
+  }
+
+  function balance(gameId) {
+    return game(gameId).currency[currencyId(gameId)] || 0;
+  }
+
+  function grant(gameId, amount) {
+    if (!(amount > 0)) return 0;
+    var g = game(gameId);
+    var id = currencyId(gameId);
+    g.currency[id] = (g.currency[id] || 0) + Math.floor(amount);
+    save();
+    return g.currency[id];
+  }
+
+  /* ------------------------------------------------------------- unlocks */
+
+  function unlockDef(gameId, unlockId) {
+    var p = Arcade.progressionOf(gameId);
+    if (!p) return null;
+    for (var i = 0; i < p.unlocks.length; i++) {
+      if (p.unlocks[i].id === unlockId) return p.unlocks[i];
+    }
+    return null;
+  }
+
+  function isUnlocked(gameId, unlockId) {
+    return !!game(gameId).unlocked[unlockId];
+  }
+
+  /** Buy an unlock. Returns { ok, reason } — never throws at a caller. */
+  function buy(gameId, unlockId) {
+    var def = unlockDef(gameId, unlockId);
+    if (!def) return { ok: false, reason: 'No such unlock.' };
+    if (isUnlocked(gameId, unlockId)) return { ok: false, reason: 'Already unlocked.' };
+    var g = game(gameId);
+    var id = currencyId(gameId);
+    if ((g.currency[id] || 0) < def.cost) return { ok: false, reason: 'Not enough yet.' };
+    g.currency[id] -= def.cost;
+    g.unlocked[unlockId] = Date.now();
+    save();
+    return { ok: true, unlock: def };
+  }
+
+  /**
+   * Every `effect` tag a game has unlocked, as a map.
+   * 'gold:4' becomes { gold: 4 }; a bare tag like 'ball:bomb' collects into a
+   * list, so a game can ask "which balls have I unlocked?" in one call.
+   */
+  function effects(gameId) {
+    var out = { flags: {}, lists: {} };
+    var p = Arcade.progressionOf(gameId);
+    if (!p) return out;
+    var g = game(gameId);
+    p.unlocks.forEach(function (u) {
+      if (!g.unlocked[u.id] || !u.effect) return;
+      var bits = String(u.effect).split(':');
+      var key = bits[0];
+      var val = bits.length > 1 ? bits[1] : '1';
+      var num = Number(val);
+      if (isFinite(num) && String(num) === val) {
+        out.flags[key] = (out.flags[key] || 0) + num;
+      } else {
+        if (!out.lists[key]) out.lists[key] = [];
+        out.lists[key].push(val);
+      }
+    });
+    return out;
+  }
+
+  /** Numeric effect total, e.g. bonus('pegfall', 'gold') -> 4. */
+  function bonus(gameId, key) { return effects(gameId).flags[key] || 0; }
+  /** Named effect list, e.g. granted('pegfall', 'ball') -> ['bomb']. */
+  function granted(gameId, key) { return effects(gameId).lists[key] || []; }
+
+  /* -------------------------------------------------------- achievements */
+
+  function hasAchievement(id) { return !!state().achievements[id]; }
+
+  /**
+   * Earn an achievement. Returns true only the first time, which is what the
+   * caller uses to decide whether to celebrate.
+   */
+  function award(id) {
+    var def = Arcade.achievementById(id);
+    if (!def || hasAchievement(id)) return false;
+    state().achievements[id] = Date.now();
+    save();
+    if (Arcade.ui && Arcade.ui.achievementToast) Arcade.ui.achievementToast(def);
+    return true;
+  }
+
+  function achievementsFor(gameId) {
+    return Arcade.achievements.filter(function (a) {
+      return gameId === undefined ? true : a.game === gameId;
+    });
+  }
+
+  function achievementProgress() {
+    var total = Arcade.achievements.length;
+    var got = 0;
+    Arcade.achievements.forEach(function (a) { if (hasAchievement(a.id)) got++; });
+    return { earned: got, total: total, pct: total ? Math.round((got / total) * 100) : 0 };
+  }
+
+  /* ----------------------------------------------------- difficulty clears */
+
+  function recordClear(gameId, difficultyId) {
+    if (difficultyId === undefined || difficultyId === null) return false;
+    var g = game(gameId);
+    var key = String(difficultyId);
+    if (g.clears[key]) return false;
+    g.clears[key] = Date.now();
+    save();
+    return true;
+  }
+
+  function hasClear(gameId, difficultyId) {
+    return !!game(gameId).clears[String(difficultyId)];
+  }
+
+  function clearsFor(gameId) {
+    var p = Arcade.progressionOf(gameId);
+    if (!p) return [];
+    return p.difficulties.map(function (d) {
+      return { id: d.id, label: d.label, cleared: hasClear(gameId, d.id) };
+    });
+  }
+
+  /* ----------------------------------------------------------- run intake */
+
+  /**
+   * The single hook a game calls when a run ends. Awards currency, records the
+   * clear, updates totals and evaluates every achievement that has a test.
+   *
+   * @param summary { score, floor, ante, won, difficulty, ... } — whatever the
+   *        game has; the catalogue's earn() and test()s read from it.
+   */
+  function recordRun(gameId, summary) {
+    summary = summary || {};
+    var s = state();
+    var g = game(gameId);
+
+    s.totals.runs++;
+    g.runs++;
+    if (summary.won) { s.totals.wins++; g.wins++; }
+    if ((summary.score || 0) > (g.best || 0)) g.best = Math.floor(summary.score || 0);
+
+    var p = Arcade.progressionOf(gameId);
+    var earned = 0;
+    if (p && typeof p.earn === 'function') {
+      try { earned = Math.max(0, Math.floor(p.earn(summary) || 0)); } catch (e) { earned = 0; }
+      if (earned) {
+        var id = currencyId(gameId);
+        g.currency[id] = (g.currency[id] || 0) + earned;
+      }
+    }
+
+    if (summary.won) recordClear(gameId, summary.difficulty);
+
+    save();     // totals must be stored before the tests read them
+
+    var unlockedNow = [];
+    Arcade.achievements.forEach(function (a) {
+      if (typeof a.test !== 'function') return;
+      if (a.game && a.game !== gameId) return;
+      if (hasAchievement(a.id)) return;
+      var pass = false;
+      try { pass = !!a.test(summary, state()); } catch (e) { pass = false; }
+      if (pass && award(a.id)) unlockedNow.push(a);
+    });
+
+    return {
+      currency: earned,
+      currencyLabel: p ? p.currency.label : 'points',
+      achievements: unlockedNow
+    };
+  }
+
+  /* ---------------------------------------------------------------- steam */
+
+  /**
+   * Everything a Steam build would push on launch: which achievements are
+   * earned, and the stats its rules might key on. Nothing calls this yet — it
+   * exists so the mapping is obvious when something does.
+   */
+  function snapshotForSteam() {
+    var out = { achievements: [], stats: {} };
+    Arcade.achievements.forEach(function (a) {
+      if (hasAchievement(a.id)) out.achievements.push(a.steam || a.id);
+    });
+    var s = state();
+    out.stats.TOTAL_RUNS = s.totals.runs;
+    out.stats.TOTAL_WINS = s.totals.wins;
+    Arcade.games.forEach(function (g) {
+      var gs = s.games[g.id] || blankGame();
+      var up = g.id.toUpperCase();
+      out.stats[up + '_RUNS'] = gs.runs;
+      out.stats[up + '_WINS'] = gs.wins;
+      out.stats[up + '_BEST'] = gs.best;
+      out.stats[up + '_CLEARS'] = Object.keys(gs.clears || {}).length;
+    });
+    return out;
+  }
+
+  function reset() {
+    data = blank();
+    save();
+  }
+
+  load();
+
+  Arcade.progress = {
+    state: state, save: save, reset: reset,
+    onChange: function (fn) {
+      listeners.push(fn);
+      return function () {
+        var i = listeners.indexOf(fn);
+        if (i !== -1) listeners.splice(i, 1);
+      };
+    },
+    forGame: game,
+    balance: balance, grant: grant, currencyId: currencyId,
+    buy: buy, isUnlocked: isUnlocked, unlockDef: unlockDef,
+    effects: effects, bonus: bonus, granted: granted,
+    award: award, hasAchievement: hasAchievement,
+    achievementsFor: achievementsFor, achievementProgress: achievementProgress,
+    recordClear: recordClear, hasClear: hasClear, clearsFor: clearsFor,
+    recordRun: recordRun,
+    snapshotForSteam: snapshotForSteam
+  };
+})(typeof window !== 'undefined' ? window : this);
+</script>
+<script>
 // ===== shared/js/arcade-ui.js
 /* ============================================================================
    arcade-ui.js — the shared chrome: arcade bar, auth dialog, leaderboard,
@@ -3007,6 +3570,188 @@ body.cb .pocket-pick.black::after {
     });
   }
 
+  /* --------------------------------------------------------- progression */
+
+  /** An earned achievement deserves more than an ordinary toast. */
+  function achievementToast(def) {
+    var t = el('div', 'ac-toast ac-toast--achv');
+    t.appendChild(el('div', 'ac-achv__mark', '★'));
+    var body = el('div');
+    body.appendChild(el('div', 'ac-achv__kicker', 'Achievement unlocked'));
+    body.appendChild(el('div', 'ac-achv__name', def.label));
+    t.appendChild(body);
+    toastHost().appendChild(t);
+    global.setTimeout(function () {
+      t.classList.add('is-out');
+      global.setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 260);
+    }, 5200);
+  }
+
+  /**
+   * The progression menu: what you have earned, what it buys, and what is left
+   * to achieve. Deliberately apart from any run — nothing in here is reachable
+   * mid-game, and nothing mid-game needs it.
+   */
+  function showProgress(gameId) {
+    var id = gameId || currentGameId || (Arcade.games[0] && Arcade.games[0].id);
+    var tab = 'unlocks';
+
+    modal({
+      wide: true,
+      title: 'Progression',
+      sub: 'Everything you keep between runs.',
+      body: function (body) {
+        var gameTabs = el('div', 'ac-tabs');
+        Arcade.games.forEach(function (g) {
+          var t = el('button', 'ac-tab', g.name);
+          t.type = 'button';
+          t.setAttribute('aria-selected', g.id === id ? 'true' : 'false');
+          t.addEventListener('click', function () {
+            if (g.id === id) return;
+            id = g.id;
+            Array.prototype.forEach.call(gameTabs.children, function (c) {
+              c.setAttribute('aria-selected', c === t ? 'true' : 'false');
+            });
+            draw();
+          });
+          gameTabs.appendChild(t);
+        });
+        body.appendChild(gameTabs);
+
+        var sectionTabs = el('div', 'ac-metrics');
+        var SECTIONS = [['unlocks', 'Unlocks'], ['achievements', 'Achievements'], ['clears', 'Difficulty']];
+        SECTIONS.forEach(function (pair) {
+          var t = el('button', 'ac-metric', pair[1]);
+          t.type = 'button';
+          t.setAttribute('aria-selected', pair[0] === tab ? 'true' : 'false');
+          t.addEventListener('click', function () {
+            if (pair[0] === tab) return;
+            tab = pair[0];
+            Array.prototype.forEach.call(sectionTabs.children, function (c) {
+              c.setAttribute('aria-selected', c === t ? 'true' : 'false');
+            });
+            draw();
+          });
+          sectionTabs.appendChild(t);
+        });
+        body.appendChild(sectionTabs);
+
+        var host = el('div');
+        body.appendChild(host);
+
+        function draw() {
+          host.innerHTML = '';
+          if (tab === 'unlocks') drawUnlocks(host, id, draw);
+          else if (tab === 'achievements') drawAchievements(host, id);
+          else drawClears(host, id);
+        }
+        draw();
+      },
+      foot: function (foot, api) { foot.appendChild(btn('Close', '', api.close)); }
+    });
+  }
+
+  function drawUnlocks(host, gameId, redraw) {
+    var prog = Arcade.progressionOf(gameId);
+    if (!prog) { host.appendChild(emptyNote('This game has no progression yet.')); return; }
+
+    var bal = Arcade.progress.balance(gameId);
+    var purse = el('div', 'ac-purse');
+    purse.appendChild(el('span', 'ac-purse__icon', prog.currency.icon));
+    purse.appendChild(el('b', 'ac-purse__amount', fmt(bal)));
+    purse.appendChild(el('span', 'ac-purse__label', prog.currency.label + ' — earned by playing'));
+    host.appendChild(purse);
+
+    var list = el('div', 'ac-unlocks');
+    prog.unlocks.forEach(function (u) {
+      var owned = Arcade.progress.isUnlocked(gameId, u.id);
+      var afford = bal >= u.cost;
+      var row = el('div', 'ac-unlock' + (owned ? ' is-owned' : ''));
+
+      var text = el('div', 'ac-unlock__text');
+      text.appendChild(el('div', 'ac-unlock__name', u.label));
+      text.appendChild(el('div', 'ac-unlock__desc', u.desc));
+      row.appendChild(text);
+
+      if (owned) {
+        row.appendChild(el('span', 'ac-unlock__owned', 'Unlocked'));
+      } else {
+        var b = btn(prog.currency.icon + ' ' + u.cost,
+          'ac-btn--sm' + (afford ? ' ac-btn--gold' : ''), function () {
+            var res = Arcade.progress.buy(gameId, u.id);
+            if (res.ok) { toast('Unlocked ' + u.label, 'gold'); redraw(); }
+            else { toast(res.reason, 'bad'); }
+          });
+        b.disabled = !afford;
+        row.appendChild(b);
+      }
+      list.appendChild(row);
+    });
+    host.appendChild(list);
+
+    var note = el('div', 'ac-note');
+    note.style.marginTop = 'var(--ac-s4)';
+    note.textContent = 'Unlocks apply to every new run and are never lost.';
+    host.appendChild(note);
+  }
+
+  function drawAchievements(host, gameId) {
+    var p = Arcade.progress.achievementProgress();
+
+    var head = el('div', 'ac-purse');
+    head.appendChild(el('b', 'ac-purse__amount', p.earned + ' / ' + p.total));
+    head.appendChild(el('span', 'ac-purse__label', 'earned across the arcade'));
+    host.appendChild(head);
+
+    var bar = el('div', 'ac-achvbar');
+    var fill = el('div', 'ac-achvbar__fill');
+    fill.style.width = p.pct + '%';
+    bar.appendChild(fill);
+    host.appendChild(bar);
+
+    [{ id: gameId, label: Arcade.gameById(gameId).name },
+     { id: null, label: 'Arcade-wide' }].forEach(function (grp) {
+      var items = Arcade.progress.achievementsFor(grp.id);
+      if (!items.length) return;
+      host.appendChild(el('div', 'ac-cap ac-achv__group', grp.label));
+      var list = el('div', 'ac-unlocks');
+      items.forEach(function (a) {
+        var got = Arcade.progress.hasAchievement(a.id);
+        var row = el('div', 'ac-unlock ac-achv' + (got ? ' is-owned' : ''));
+        row.appendChild(el('span', 'ac-achv__mark' + (got ? '' : ' is-locked'), got ? '★' : '☆'));
+        var text = el('div', 'ac-unlock__text');
+        text.appendChild(el('div', 'ac-unlock__name', a.label));
+        text.appendChild(el('div', 'ac-unlock__desc',
+          (a.secret && !got) ? 'Hidden — keep playing.' : a.desc));
+        row.appendChild(text);
+        list.appendChild(row);
+      });
+      host.appendChild(list);
+    });
+  }
+
+  function drawClears(host, gameId) {
+    var rows = Arcade.progress.clearsFor(gameId);
+    var game = Arcade.gameById(gameId);
+    if (rows.length < 2) {
+      host.appendChild(emptyNote(game.name + ' runs at a single difficulty for now, ' +
+        'so there is nothing to clear separately yet.'));
+      return;
+    }
+    host.appendChild(el('div', 'ac-cap', 'Cleared at'));
+    var list = el('div', 'ac-unlocks');
+    rows.forEach(function (r) {
+      var row = el('div', 'ac-unlock' + (r.cleared ? ' is-owned' : ''));
+      var text = el('div', 'ac-unlock__text');
+      text.appendChild(el('div', 'ac-unlock__name', r.label));
+      row.appendChild(text);
+      row.appendChild(el('span', r.cleared ? 'ac-unlock__owned' : 'ac-note',
+        r.cleared ? 'Cleared' : 'Not yet'));
+      list.appendChild(row);
+    });
+    host.appendChild(list);
+  }
+
   /* ------------------------------------------------------------ arcade bar */
 
   function gameHref(g) {
@@ -3085,6 +3830,12 @@ body.cb .pocket-pick.black::after {
     brand.appendChild(caret);
 
     bar.appendChild(brand);
+
+    var prog = el('button', 'ac-bar__btn', 'Progress');
+    prog.type = 'button';
+    prog.title = 'Unlocks, achievements and difficulty clears';
+    prog.addEventListener('click', function () { showProgress(currentGameId); });
+    bar.appendChild(prog);
 
     var lb = el('button', 'ac-bar__btn', 'Leaderboard');
     lb.type = 'button';
@@ -3184,6 +3935,9 @@ body.cb .pocket-pick.black::after {
     row.appendChild(btn(opts.leaderboardLabel || 'Leaderboard', 'ac-btn--sm', function () {
       showLeaderboard(opts.gameId || currentGameId);
     }));
+    row.appendChild(btn('Progress', 'ac-btn--sm', function () {
+      showProgress(opts.gameId || currentGameId);
+    }));
     var accountBtn = btn('', 'ac-btn--sm', function () {
       if (!Arcade.isConfigured()) showOffline();
       else if (Arcade.auth.isSignedIn()) showAccount();
@@ -3210,6 +3964,8 @@ body.cb .pocket-pick.black::after {
 
   Arcade.ui = {
     mountBar: mountBar,
+    showProgress: showProgress,
+    achievementToast: achievementToast,
     refreshBar: refreshBar,
     showAuth: showAuth,
     showAccount: showAccount,
@@ -5760,6 +6516,15 @@ const SAVE_KEY = 'no-limit-save-v2';
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
+/* Permanent unlocks bought with Markers in the arcade's progression menu.
+   Read live rather than copied into the run, so buying one applies to the
+   run in progress as well as the next. Zero when the arcade layer is absent,
+   which is how the engine stays runnable headlessly in the test suite. */
+function metaBonus(key) {
+  const a = typeof globalThis !== 'undefined' ? globalThis.Arcade : null;
+  return (a && a.progress) ? a.progress.bonus('nolimit', key) : 0;
+}
+
 function fmt(n) {
   if (n === undefined || n === null) return '0';
   if (!isFinite(n)) return '∞';
@@ -5857,6 +6622,7 @@ class Game {
     G.ante = 1;
     G.blindIndex = 0;
     G.money = G.mods.startMoney !== undefined ? G.mods.startMoney : 4;
+    G.money += metaBonus('money');
     G.tokens = [];
     G.tokenSlots = 5 + (G.mods.tokenSlots || 0);
     G.omens = [];
@@ -5965,12 +6731,12 @@ class Game {
 
   get chipsPerRound() {
     return Math.max(1, BASE_CHIPS + this.passive('chips') + (this.mods.chips || 0)
-      + (this.hasCharter('comped') ? 1 : 0));
+      + (this.hasCharter('comped') ? 1 : 0) + metaBonus('chips'));
   }
 
   get nudgesPerRound() {
     return Math.max(0, BASE_NUDGES + this.passive('nudges') + (this.stake.nudges || 0)
-      + (this.hasCharter('overtime') ? 2 : 0));
+      + (this.hasCharter('overtime') ? 2 : 0) + metaBonus('nudge'));
   }
 
   get nudgeStep() {
@@ -6455,6 +7221,15 @@ class Game {
     // the engine stays DOM-free and never waits on the network.
     const arcade = typeof globalThis !== 'undefined' ? globalThis.Arcade : null;
     if (arcade) {
+      arcade.progress.recordRun('nolimit', {
+        score: summary.bestScore,
+        ante: summary.ante,
+        tables: this.stats.roundsWon,
+        pocketsRemoved: this.stats.pocketsRemoved,
+        won: !!won,
+        // The stake is this game's difficulty ladder.
+        difficulty: this.stakeId
+      });
       arcade.submitScore('nolimit', {
         score: summary.bestScore,
         metrics: { ante: summary.ante, tables: this.stats.roundsWon },

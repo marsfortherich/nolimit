@@ -28,6 +28,15 @@ const SAVE_KEY = 'no-limit-save-v2';
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
+/* Permanent unlocks bought with Markers in the arcade's progression menu.
+   Read live rather than copied into the run, so buying one applies to the
+   run in progress as well as the next. Zero when the arcade layer is absent,
+   which is how the engine stays runnable headlessly in the test suite. */
+function metaBonus(key) {
+  const a = typeof globalThis !== 'undefined' ? globalThis.Arcade : null;
+  return (a && a.progress) ? a.progress.bonus('nolimit', key) : 0;
+}
+
 export function fmt(n) {
   if (n === undefined || n === null) return '0';
   if (!isFinite(n)) return '∞';
@@ -125,6 +134,7 @@ export class Game {
     G.ante = 1;
     G.blindIndex = 0;
     G.money = G.mods.startMoney !== undefined ? G.mods.startMoney : 4;
+    G.money += metaBonus('money');
     G.tokens = [];
     G.tokenSlots = 5 + (G.mods.tokenSlots || 0);
     G.omens = [];
@@ -233,12 +243,12 @@ export class Game {
 
   get chipsPerRound() {
     return Math.max(1, BASE_CHIPS + this.passive('chips') + (this.mods.chips || 0)
-      + (this.hasCharter('comped') ? 1 : 0));
+      + (this.hasCharter('comped') ? 1 : 0) + metaBonus('chips'));
   }
 
   get nudgesPerRound() {
     return Math.max(0, BASE_NUDGES + this.passive('nudges') + (this.stake.nudges || 0)
-      + (this.hasCharter('overtime') ? 2 : 0));
+      + (this.hasCharter('overtime') ? 2 : 0) + metaBonus('nudge'));
   }
 
   get nudgeStep() {
@@ -723,6 +733,15 @@ export class Game {
     // the engine stays DOM-free and never waits on the network.
     const arcade = typeof globalThis !== 'undefined' ? globalThis.Arcade : null;
     if (arcade) {
+      arcade.progress.recordRun('nolimit', {
+        score: summary.bestScore,
+        ante: summary.ante,
+        tables: this.stats.roundsWon,
+        pocketsRemoved: this.stats.pocketsRemoved,
+        won: !!won,
+        // The stake is this game's difficulty ladder.
+        difficulty: this.stakeId
+      });
       arcade.submitScore('nolimit', {
         score: summary.bestScore,
         metrics: { ante: summary.ante, tables: this.stats.roundsWon },
