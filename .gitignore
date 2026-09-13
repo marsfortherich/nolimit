@@ -1,0 +1,16 @@
+# index.html and deploy/ are build artifacts, but they are committed on purpose:
+# it keeps the repo double-clickable and lets a plain branch deploy work without
+# any build step. Run `python build.py` before committing source changes.
+
+.DS_Store
+Thumbs.db
+desktop.ini
+
+node_modules/
+__pycache__/
+*.pyc
+
+# local-only editor and tool state
+.claude/settings.local.json
+.vscode/
+.idea/

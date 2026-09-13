@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nothing here &mdash; No Limit</title>
+<style>
+  html, body { height: 100%; margin: 0; font-family: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif; }
+  body {
+    background: radial-gradient(circle at 50% 0%, #14503a 0%, #0d3b2a 38%, #072016 100%);
+    color: #eae5d8; display: grid; place-items: center; text-align: center; padding: 24px;
+  }
+  h1 { font-size: 34px; letter-spacing: .2em; color: #d9b45b; text-transform: uppercase; margin: 0 0 10px; }
+  p { color: #99a1ad; }
+  a {
+    display: inline-block; margin-top: 18px; padding: 11px 22px; border-radius: 8px;
+    background: linear-gradient(180deg, #d94f3d, #9c2c1f); border: 1px solid #e8705f;
+    color: #fff; text-decoration: none; font-weight: bold; letter-spacing: .09em; text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+<div>
+  <h1>Nothing here</h1>
+  <p>The house has no record of that page.</p>
+  <a id="back" href="/">Back to the table</a>
+</div>
+<script>
+  // Project sites live at /<repo>/, user and org sites at /. Guess the game's
+  // root from the first path segment, and fall back to the domain root.
+  var seg = location.pathname.split('/').filter(Boolean);
+  var projectSite = location.hostname.indexOf('github.io') !== -1 && seg.length > 1;
+  document.getElementById('back').href = projectSite ? '/' + seg[0] + '/' : '/';
+</script>
+</body>
+</html>

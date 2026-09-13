@@ -1,0 +1,71 @@
+# Publishes the deploy/ folder to GitHub Pages.
+#
+# GitHub's branch-based Pages deploy can only serve the repository root or
+# /docs, so a folder named deploy/ needs this workflow. Enable it once under
+# Settings -> Pages -> Source -> GitHub Actions.
+#
+# The bundle is rebuilt and the test suite runs on every push, so the published
+# page can never be a stale artifact someone forgot to rebuild.
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a run in progress finish so a half-published site is never live.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Test
+        run: node test/run.mjs
+
+      - name: Build the bundle
+        run: python3 build.py
+
+      - name: Fail if the committed bundle was stale
+        run: |
+          if ! git diff --quiet -- index.html deploy/; then
+            echo "::warning::The committed bundle differed from a fresh build."
+            echo "Run 'python build.py' and commit the result to keep them in step."
+            git --no-pager diff --stat -- index.html deploy/
+          fi
+
+
+      - name: Check the published root is intact
+        run: |
+          test -f deploy/index.html || { echo "::error::deploy/index.html is missing"; exit 1; }
+          test -f deploy/CNAME || { echo "::error::CNAME is missing — the custom domain would be dropped"; exit 1; }
+          test -f shared/js/arcade.js || {
+            echo "::error::shared/ is missing — run tools/sync-shared.py in the arcade and commit"; exit 1; }
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: deploy
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

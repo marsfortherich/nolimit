@@ -1,0 +1,790 @@
+/* ------------------------------------------------------------------ */
+/*  No Limit - a roulette roguelike                                    */
+/* ------------------------------------------------------------------ */
+
+:root {
+  --felt:      #0d3b2a;
+  --felt-dark: #072016;
+  --panel:     #171b21;
+  --panel-2:   #1f242c;
+  --panel-3:   #2a3039;
+  --line:      #39404b;
+  --ink:       #eae5d8;
+  --ink-dim:   #99a1ad;
+  --gold:      #d9b45b;
+  --gold-hot:  #f0d089;
+  --red:       #c0392b;
+  --red-hot:   #e0574a;
+  --black:     #23262c;
+  --green:     #21a06b;
+  --blue:      #4b8bd6;
+  --purple:    #a457d4;
+  --shadow: 0 4px 0 rgba(0,0,0,.45), 0 10px 22px rgba(0,0,0,.35);
+  --r: 10px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background:
+    radial-gradient(circle at 50% 0%, #14503a 0%, var(--felt) 38%, var(--felt-dark) 100%);
+  color: var(--ink);
+  font-family: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+  font-size: 15px;
+  overflow: hidden;
+}
+
+button { font-family: inherit; color: inherit; cursor: pointer; border: none; background: none; }
+button:disabled { cursor: not-allowed; }
+
+#app {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 268px 1fr;
+  gap: 14px;
+  padding: 14px;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Sidebar                                                            */
+/* ------------------------------------------------------------------ */
+
+#sidebar {
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.brand {
+  text-align: center;
+  letter-spacing: .22em;
+  font-size: 12px;
+  color: var(--gold);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+
+.blindcard {
+  background: var(--panel-3);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  text-align: center;
+}
+.blindcard.boss { border-color: var(--red); box-shadow: inset 0 0 24px rgba(192,57,43,.25); }
+.blindcard h2 { margin: 0 0 4px; font-size: 15px; letter-spacing: .05em; }
+.blindcard .bosstext { font-size: 12px; color: var(--red-hot); line-height: 1.35; }
+
+.target {
+  margin-top: 8px;
+  background: #11141a;
+  border-radius: 6px;
+  padding: 8px 6px;
+}
+.target .lbl { font-size: 10px; letter-spacing: .16em; color: var(--ink-dim); text-transform: uppercase; }
+.target .val { font-size: 26px; color: var(--red-hot); font-weight: bold; line-height: 1.1; }
+
+.scorebox {
+  background: #11141a;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  text-align: center;
+}
+.scorebox .lbl { font-size: 10px; letter-spacing: .16em; color: var(--ink-dim); text-transform: uppercase; }
+.scorebox .val { font-size: 30px; font-weight: bold; color: var(--gold-hot); line-height: 1.15; }
+.progress { height: 6px; background: #0a0d11; border-radius: 3px; overflow: hidden; margin-top: 6px; }
+.progress > i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold), var(--red)); transition: width .35s; }
+
+.statgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stat {
+  background: var(--panel-3);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 4px;
+  text-align: center;
+}
+.stat .lbl { font-size: 9px; letter-spacing: .12em; color: var(--ink-dim); text-transform: uppercase; }
+.stat .val { font-size: 21px; font-weight: bold; }
+.stat.spins .val { color: var(--blue); }
+.stat.nudges .val { color: var(--purple); }
+.stat.money .val { color: var(--gold); }
+.stat.ante .val { color: var(--ink); }
+
+.slotrow { display: flex; gap: 6px; flex-wrap: wrap; min-height: 44px; }
+
+.section-h {
+  font-size: 10px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  display: flex;
+  justify-content: space-between;
+}
+
+.log { font-size: 11px; color: var(--ink-dim); line-height: 1.45; max-height: 110px; overflow-y: auto; }
+.log div { padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+
+.seed { font-size: 10px; color: #5d6673; text-align: center; letter-spacing: .08em; }
+
+/* ------------------------------------------------------------------ */
+/*  Stage                                                              */
+/* ------------------------------------------------------------------ */
+
+#stage {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 12px;
+  min-height: 0;
+}
+
+#tokenbar {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  min-height: 104px;
+  background: rgba(0,0,0,.22);
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: var(--r);
+  padding: 8px;
+}
+.bar-label {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 9px;
+  letter-spacing: .2em;
+  color: var(--ink-dim);
+  text-transform: uppercase;
+  align-self: center;
+}
+
+#centre {
+  grid-row: 2;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: safe center;
+}
+
+#actionbar { display: flex; gap: 10px; justify-content: center; align-items: center; min-height: 60px; }
+
+/* ------------------------------------------------------------------ */
+/*  Cards (tokens / omens / shop)                                      */
+/* ------------------------------------------------------------------ */
+
+.card {
+  position: relative;
+  width: 92px;
+  background: linear-gradient(165deg, var(--panel-2), #10131820);
+  background-color: var(--panel-2);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--rarity, var(--line));
+  border-radius: 8px;
+  padding: 7px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: center;
+  box-shadow: 0 3px 0 rgba(0,0,0,.5);
+  transition: transform .12s, box-shadow .12s;
+  user-select: none;
+}
+.card:hover { transform: translateY(-4px); box-shadow: 0 7px 0 rgba(0,0,0,.5); z-index: 5; }
+.card .cname { font-size: 11px; font-weight: bold; line-height: 1.15; }
+.card .cglyph { font-size: 26px; line-height: 1; color: var(--gold); }
+.card .ctag { font-size: 9px; color: var(--ink-dim); letter-spacing: .06em; text-transform: uppercase; }
+.card .cprice { font-size: 12px; color: var(--gold); font-weight: bold; }
+.card.disabled { opacity: .42; filter: grayscale(.6); }
+.card.sold { opacity: .3; }
+.card.omen { background-color: #241d33; border-top-color: var(--purple); }
+.card.charter { background-color: #2b2416; border-top-color: var(--gold); width: 120px; }
+
+.slot-empty {
+  width: 92px;
+  border: 1px dashed rgba(255,255,255,.16);
+  background: rgba(0,0,0,.18);
+  border-radius: 8px;
+}
+.slot-empty.small { width: 60px; height: 60px; }
+
+.card.small { width: 60px; padding: 5px 3px; }
+.card.small .cglyph { font-size: 20px; }
+.card.small .cname { font-size: 9px; }
+
+/* ------------------------------------------------------------------ */
+/*  Wheel                                                              */
+/* ------------------------------------------------------------------ */
+
+.play-grid {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 14px;
+  align-items: start;
+}
+@media (max-width: 1180px) { .play-grid { grid-template-columns: 220px 1fr; } }
+
+.wheel-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.wheel-svg { width: 100%; max-width: 290px; filter: drop-shadow(0 8px 16px rgba(0,0,0,.5)); }
+/* transform-box makes the origin the viewBox centre rather than the rotor's
+   own bounding box, so the wheel spins about its hub. */
+/* wheelview.js writes this transform every frame, so nothing here may
+   transition it — a CSS transition would fight the animation loop. */
+#wheelRotor {
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+}
+.wheel-ball { filter: drop-shadow(0 1px 2px rgba(0,0,0,.7)); }
+
+.result-badge {
+  width: 84px; height: 84px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 34px; font-weight: bold;
+  border: 3px solid var(--gold);
+  box-shadow: 0 0 26px rgba(217,180,91,.35);
+}
+.result-badge.red { background: var(--red); }
+.result-badge.black { background: var(--black); }
+.result-badge.green { background: var(--green); }
+.result-badge.idle { background: #0f1319; border-color: var(--line); color: #465060; font-size: 15px; letter-spacing: .1em; }
+
+/* score readout */
+.readout { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 4px; }
+.readout .chips, .readout .mult {
+  min-width: 88px; padding: 6px 10px; border-radius: 6px; text-align: center;
+  font-size: 24px; font-weight: bold;
+}
+.readout .chips { background: #16334f; color: #9fd0ff; }
+.readout .mult  { background: #4a1a17; color: #ff9d8f; }
+.readout .x { color: var(--ink-dim); font-size: 18px; }
+.readout .total { font-size: 26px; color: var(--gold-hot); font-weight: bold; }
+
+.steps {
+  margin-top: 8px; width: 100%; max-height: 190px; overflow-y: auto;
+  font-size: 11px; display: flex; flex-direction: column; gap: 2px;
+}
+.steps .step {
+  display: flex; justify-content: space-between; gap: 6px;
+  padding: 3px 7px; border-radius: 4px; background: rgba(255,255,255,.045);
+}
+.steps .step b { font-weight: normal; color: var(--ink-dim); }
+.steps .step.chips span { color: #9fd0ff; }
+.steps .step.mult span, .steps .step.xmult span { color: #ff9d8f; }
+.steps .step.money span { color: var(--gold); }
+.steps .step.dead { opacity: .5; }
+.steps .step.bet span { color: var(--ink); }
+
+/* ------------------------------------------------------------------ */
+/*  Betting layout                                                     */
+/* ------------------------------------------------------------------ */
+
+.felt {
+  background: linear-gradient(180deg, #12513a, #0c3527);
+  border: 2px solid #b8973f;
+  border-radius: 10px;
+  padding: 8px;
+  box-shadow: inset 0 0 40px rgba(0,0,0,.4), var(--shadow);
+}
+
+.strip { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; margin-bottom: 3px; }
+.strip .bet { font-size: 8px; padding: 2px 0; }
+
+/* The betting layout: a 0 column, twelve number columns, a column-bet column.
+   The number rows get real height so the felt reads as a table, not a toolbar. */
+.felt-grid {
+  display: grid;
+  grid-template-columns: 34px repeat(12, 1fr) 46px;
+  grid-template-rows: auto 44px 44px 44px 30px 30px;
+  gap: 3px;
+}
+@media (max-height: 780px) { .felt-grid { grid-template-rows: auto 34px 34px 34px 26px 26px; } }
+
+/* Below this the felt cannot hold fourteen columns beside the wheel, so the
+   wheel moves above it and the whole table gets the full width. */
+@media (max-width: 1040px) {
+  .play-grid { grid-template-columns: 1fr; }
+  .wheel-wrap { flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; gap: 14px; }
+  .wheel-svg { max-width: 190px; }
+  .steps { max-width: 340px; }
+  .felt-grid { grid-template-columns: 26px repeat(12, 1fr) 34px; grid-template-rows: auto 32px 32px 32px 26px 26px; }
+  .bet { font-size: 12px; }
+}
+
+.bet {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  font-weight: bold;
+  min-height: 22px;
+  color: #fff;
+  background: rgba(255,255,255,.05);
+  transition: filter .1s, transform .08s;
+  user-select: none;
+}
+.bet:hover:not(.locked) { filter: brightness(1.45); transform: translateY(-1px); }
+.bet.red { background: var(--red); }
+.bet.black { background: var(--black); }
+.bet.green { background: var(--green); }
+.bet.outside { background: rgba(255,255,255,.06); font-size: 12px; letter-spacing: .04em; }
+.bet.locked { background: repeating-linear-gradient(45deg, #2a2a2a, #2a2a2a 5px, #1a1a1a 5px, #1a1a1a 10px); color: #666; cursor: not-allowed; }
+.bet.hit { outline: 3px solid var(--gold); outline-offset: -1px; z-index: 3; animation: pop .4s ease; }
+.bet.dimmed { opacity: .35; }
+@keyframes pop { 0% { transform: scale(1); } 45% { transform: scale(1.14); } 100% { transform: scale(1); } }
+
+.bet .enh {
+  position: absolute; top: 1px; right: 2px;
+  font-size: 10px; color: var(--gold-hot);
+  text-shadow: 0 0 5px rgba(0,0,0,.9);
+}
+.bet .dupe {
+  position: absolute; bottom: 0px; right: 3px;
+  font-size: 9px; color: #fff; opacity: .8;
+}
+.bet .gone { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.72); color: #7d8794; font-size: 16px; border-radius: 3px; }
+
+/* Chips sit in the corner of the box so the label underneath stays readable. */
+.chipstack {
+  position: absolute;
+  z-index: 2;
+  right: 2px; bottom: 1px;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff8e0, var(--gold) 60%, #8a6f26);
+  border: 2px dashed rgba(0,0,0,.5);
+  color: #2a1f05; font-size: 12px; font-weight: bold;
+  display: grid; place-items: center;
+  box-shadow: 0 2px 5px rgba(0,0,0,.55);
+  pointer-events: none;
+}
+
+.zero { font-size: 19px; }
+.colbet { font-size: 11px; }
+.dozrow { display: grid; grid-template-columns: 34px repeat(12, 1fr) 46px; gap: 2px; margin-top: 3px; }
+.dozrow .bet, .evenrow .bet { min-height: 24px; }
+.evenrow { display: grid; grid-template-columns: 34px repeat(12, 1fr) 46px; gap: 2px; margin-top: 3px; }
+
+/* ------------------------------------------------------------------ */
+/*  Buttons                                                            */
+/* ------------------------------------------------------------------ */
+
+.btn {
+  background: linear-gradient(180deg, var(--panel-3), #1b2027);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: bold;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  box-shadow: 0 4px 0 rgba(0,0,0,.5);
+  transition: transform .08s, box-shadow .08s, filter .1s;
+}
+.btn:hover:not(:disabled) { filter: brightness(1.22); }
+.btn:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 rgba(0,0,0,.5); }
+.btn:disabled { opacity: .4; box-shadow: none; }
+.btn.primary { background: linear-gradient(180deg, #d94f3d, #9c2c1f); border-color: #e8705f; }
+.btn.gold { background: linear-gradient(180deg, #e0be6b, #a8842d); border-color: #f2dda2; color: #2a2007; }
+.btn.green { background: linear-gradient(180deg, #2fb47a, #17714a); border-color: #57d6a0; }
+.btn.purple { background: linear-gradient(180deg, #9b5fd0, #5f3387); border-color: #c491ef; }
+.btn.big { padding: 14px 34px; font-size: 17px; }
+.btn.sm { padding: 6px 12px; font-size: 11px; }
+
+/* ------------------------------------------------------------------ */
+/*  Panels / screens                                                   */
+/* ------------------------------------------------------------------ */
+
+.panel {
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  padding: 18px;
+}
+
+.screen-title { text-align: center; letter-spacing: .2em; text-transform: uppercase; color: var(--gold); font-size: 13px; margin: 0 0 14px; }
+
+.blind-choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; max-width: 900px; margin: 0 auto; }
+.blind-tile {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  text-align: center;
+  display: flex; flex-direction: column; gap: 8px; align-items: center;
+  transition: opacity .2s;
+}
+.blind-tile.done { opacity: .35; }
+.blind-tile.current { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold), 0 0 30px rgba(217,180,91,.16); }
+.blind-tile.bossTile { border-color: var(--red); }
+.blind-tile h3 { margin: 0; font-size: 16px; letter-spacing: .06em; }
+.blind-tile .glyph { font-size: 40px; }
+.blind-tile .req { font-size: 13px; color: var(--ink-dim); }
+.blind-tile .req b { color: var(--red-hot); font-size: 20px; display: block; }
+.blind-tile .rew { font-size: 12px; color: var(--gold); }
+.blind-tile .bosstext { font-size: 12px; color: var(--red-hot); min-height: 32px; }
+
+.shop-grid { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; align-items: flex-start; }
+.shop-card { width: 156px; }
+.shop-card .cname { font-size: 13px; }
+.shop-card .ctext { font-size: 11px; color: var(--ink-dim); line-height: 1.35; min-height: 46px; }
+
+.centered { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; height: 100%; text-align: center; }
+.bigtitle { font-size: 46px; letter-spacing: .2em; color: var(--gold); text-transform: uppercase; margin: 0; text-shadow: 0 4px 0 rgba(0,0,0,.5); }
+.subtitle { color: var(--ink-dim); letter-spacing: .28em; text-transform: uppercase; font-size: 12px; }
+
+.cashline { display: flex; justify-content: space-between; gap: 30px; padding: 6px 12px; background: rgba(255,255,255,.04); border-radius: 6px; min-width: 320px; }
+.cashline b { color: var(--gold); }
+
+/* ------------------------------------------------------------------ */
+/*  Tooltip + modal                                                    */
+/* ------------------------------------------------------------------ */
+
+#tooltip {
+  position: fixed;
+  z-index: 100;
+  max-width: 250px;
+  background: #0d1015;
+  border: 1px solid var(--gold);
+  border-radius: 8px;
+  padding: 9px 11px;
+  font-size: 12px;
+  line-height: 1.45;
+  box-shadow: 0 8px 24px rgba(0,0,0,.7);
+  pointer-events: none;
+}
+#tooltip h4 { margin: 0 0 4px; font-size: 13px; color: var(--gold-hot); }
+#tooltip .rare { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
+
+#modal {
+  position: fixed; inset: 0; z-index: 90;
+  background: rgba(0,0,0,.72);
+  display: grid; place-items: center;
+  padding: 24px;
+}
+.modal-box { max-width: 760px; width: 100%; max-height: 86vh; overflow-y: auto; }
+.pocket-picker { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; margin-top: 12px; }
+.pocket-pick {
+  width: 44px; height: 44px; border-radius: 5px; border: 1px solid rgba(255,255,255,.25);
+  display: grid; place-items: center; font-weight: bold; position: relative; font-size: 14px;
+}
+.pocket-pick:hover { outline: 2px solid var(--gold); }
+.pocket-pick.red { background: var(--red); }
+.pocket-pick.black { background: var(--black); }
+.pocket-pick.green { background: var(--green); }
+.pocket-pick .enh { position: absolute; top: 0; right: 2px; font-size: 10px; color: var(--gold-hot); }
+
+.candidates { display: flex; gap: 24px; justify-content: center; margin-top: 14px; }
+.candidate { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: rgba(0,0,0,.25); }
+::-webkit-scrollbar-thumb { background: #3c4450; border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: #4e5866; }
+
+.strip .bet { min-height: 15px; font-size: 8px; letter-spacing: 0; padding: 0; }
+.strip .chipstack { width: 13px; height: 13px; font-size: 8px; border-width: 1px; right: 1px; bottom: 1px; }
+.felt-grid > .strip { row-gap: 2px; }
+
+/* Our #id rules set `display`, which outranks the UA agent's [hidden] rule. */
+[hidden] { display: none !important; }
+
+/* ================================================================== */
+/*  Effects layer                                                      */
+/* ================================================================== */
+
+#fx {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.fx-float {
+  position: absolute;
+  transform: translate(-50%, 0);
+  font-weight: bold;
+  font-size: 15px;
+  white-space: nowrap;
+  text-shadow: 0 2px 0 rgba(0,0,0,.8), 0 0 10px rgba(0,0,0,.6);
+  will-change: transform, opacity;
+}
+.fx-chips { color: #9fd0ff; }
+.fx-mult, .fx-xmult { color: #ff9d8f; }
+.fx-xmult { font-size: 19px; color: #ffb26b; }
+.fx-bet { color: var(--ink); }
+.fx-money { color: var(--gold-hot); }
+.fx-dead, .fx-warn { color: #7d8794; font-size: 13px; }
+
+.fx-spark {
+  position: absolute;
+  width: 8px; height: 8px;
+  border-radius: 2px;
+  will-change: transform, opacity;
+}
+
+/* what a scoring trigger looks like on the thing that produced it */
+@keyframes fx-lit {
+  0%   { box-shadow: 0 0 0 0 rgba(240,208,137,0); }
+  25%  { box-shadow: 0 0 0 3px var(--lit, #f0d089), 0 0 22px 4px var(--lit, #f0d089); }
+  100% { box-shadow: 0 0 0 0 rgba(240,208,137,0); }
+}
+@keyframes fx-jig {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  30%      { transform: translateY(-9px) rotate(-3deg) scale(1.06); }
+  60%      { transform: translateY(-3px) rotate(2deg) scale(1.03); }
+}
+.fx-lit-chips  { --lit: #6fb6ff; animation: fx-lit .55s ease-out, fx-jig .45s ease-out; z-index: 12; }
+.fx-lit-mult   { --lit: #ff8f7d; animation: fx-lit .55s ease-out, fx-jig .45s ease-out; z-index: 12; }
+.fx-lit-xmult  { --lit: #ffb26b; animation: fx-lit .7s ease-out, fx-jig .6s ease-out; z-index: 12; }
+.fx-lit-bet    { --lit: #f0d089; animation: fx-lit .55s ease-out; z-index: 12; }
+.fx-lit-money  { --lit: #d9b45b; animation: fx-lit .55s ease-out; z-index: 12; }
+.fx-lit-dead, .fx-lit-warn, .fx-lit-info { --lit: #5d6673; animation: fx-lit .4s ease-out; }
+
+body.no-motion * { transition: none !important; animation: none !important; }
+
+/* ================================================================== */
+/*  Editions and stickers                                              */
+/* ================================================================== */
+
+.card.ed-foil    { background-image: linear-gradient(135deg, rgba(120,190,255,.30), rgba(255,255,255,.06) 45%, rgba(120,190,255,.22)); }
+.card.ed-holo    { background-image: linear-gradient(135deg, rgba(255,120,190,.28), rgba(120,255,220,.20) 50%, rgba(190,120,255,.28)); }
+.card.ed-poly    { background-image: linear-gradient(120deg, #ff6b6b40, #ffd93d40 25%, #6bcB7740 50%, #4d96ff40 75%, #b06bff40); background-size: 250% 250%; animation: poly 5s linear infinite; }
+.card.ed-negative { background-image: linear-gradient(160deg, rgba(0,0,0,.85), rgba(90,60,140,.55)); border-color: #a457d4; }
+@keyframes poly { 0% { background-position: 0% 50%; } 100% { background-position: 250% 50%; } }
+
+.card .sticker {
+  position: absolute;
+  top: 3px; left: 4px;
+  font-size: 11px;
+  color: var(--red-hot);
+  text-shadow: 0 0 4px rgba(0,0,0,.9);
+}
+
+.card.unseen { opacity: .35; filter: grayscale(1); }
+
+/* ================================================================== */
+/*  Tags, charters, run meta                                           */
+/* ================================================================== */
+
+.tagchip {
+  width: 30px; height: 30px;
+  display: grid; place-items: center;
+  border-radius: 7px;
+  background: #2b2440;
+  border: 1px solid #6b4fa0;
+  color: #d9c2ff;
+  font-size: 15px;
+}
+.tagchip.gold { background: #2b2416; border-color: #8a6f26; color: var(--gold-hot); }
+
+.sidebtns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+
+.runmeta {
+  display: flex; justify-content: space-between; gap: 6px;
+  font-size: 10px; letter-spacing: .06em; color: var(--ink-dim);
+  text-transform: uppercase;
+}
+
+/* ================================================================== */
+/*  Title screen                                                       */
+/* ================================================================== */
+
+.titleblurb { max-width: 520px; color: var(--ink-dim); line-height: 1.6; }
+.titlepanel { width: min(760px, 92vw); }
+.btnrow { display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.hint { font-size: 12px; color: #5d6673; }
+
+.seedinput {
+  background: #0d1015; border: 1px solid var(--line); border-radius: 8px;
+  color: var(--ink); padding: 9px 14px; text-align: center;
+  letter-spacing: .12em; font-family: inherit; width: 260px;
+}
+
+/* auto-fill (not auto-fit) keeps the column count, so a short last row
+   stays the same cell width instead of stretching. */
+.pickrow {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 6px;
+  margin-top: 6px;
+}
+.pick {
+  background: var(--panel-3);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 4px;
+  text-align: center;
+  transition: transform .1s, border-color .1s;
+}
+.pick:hover { transform: translateY(-2px); }
+.pick.on { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+.pick.locked { opacity: .4; }
+.pickglyph { font-size: 20px; color: var(--gold); line-height: 1.2; }
+.picklbl { font-size: 10px; color: var(--ink-dim); line-height: 1.25; }
+.pick.stake .stakedot {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--stake); margin: 3px auto;
+  box-shadow: 0 0 8px var(--stake);
+}
+
+/* ================================================================== */
+/*  Play screen odds and ends                                          */
+/* ================================================================== */
+
+.bethint { text-align: center; margin-top: 8px; font-size: 12px; color: var(--ink-dim); letter-spacing: .1em; }
+.enhnote { font-size: 12px; color: var(--gold); }
+.tilefoot { height: 38px; color: #5d6673; font-size: 12px; }
+.bigline { font-size: 17px; }
+.dim { color: var(--ink-dim); }
+
+.unlocks { display: flex; flex-direction: column; gap: 4px; }
+.unlockline {
+  color: var(--gold-hot); font-size: 13px; letter-spacing: .08em;
+  border: 1px solid var(--gold); border-radius: 6px; padding: 5px 14px;
+  background: rgba(217,180,91,.09);
+}
+
+.cashlines { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.cashline.total { border-top: 1px solid var(--line); margin-top: 4px; font-size: 18px; }
+
+.shopfoot { text-align: center; margin-top: 16px; display: flex; gap: 12px; justify-content: center; align-items: center; }
+.tagnote { font-size: 12px; color: var(--gold); }
+
+.card.pack     { background-color: #1d2b33; border-top-color: #4bb6d6; }
+.card.fate     { background-color: #2a1a33; border-top-color: #d64bc4; }
+.card.enh-card { background-color: #2b2416; border-top-color: var(--gold); }
+
+/* ================================================================== */
+/*  Modals                                                             */
+/* ================================================================== */
+
+.modalsub { text-align: center; color: var(--ink-dim); font-size: 12px; }
+.modalfoot { text-align: center; margin-top: 14px; }
+
+.setrow {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 20px; padding: 8px 12px; border-radius: 6px;
+  background: rgba(255,255,255,.04); margin-bottom: 6px;
+}
+.setrow > span { font-size: 13px; }
+.sel {
+  background: #0d1015; color: var(--ink); border: 1px solid var(--line);
+  border-radius: 6px; padding: 5px 8px; font-family: inherit; font-size: 12px;
+}
+input[type=range] { accent-color: var(--gold); width: 160px; }
+
+.histtable { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
+.histrow {
+  display: grid; grid-template-columns: 70px 1fr 1fr 80px 1fr;
+  gap: 8px; font-size: 11px; padding: 5px 8px;
+  background: rgba(255,255,255,.04); border-radius: 5px; align-items: center;
+}
+.histrow.won { background: rgba(46,163,106,.16); }
+.histrow.won > span:first-child { color: #6fe0a8; font-weight: bold; }
+.seedcell { color: #5d6673; letter-spacing: .06em; text-align: right; }
+
+.collection { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 10px; }
+
+#tooltip .tsub { color: var(--ink-dim); font-size: 11px; }
+#tooltip .tline { font-size: 11px; margin-top: 4px; }
+#tooltip .tfoot { margin-top: 6px; color: var(--gold); font-size: 11px; }
+
+/* ================================================================== */
+/*  Colourblind palette                                                */
+/*  Red/black is the one distinction the whole game rests on, so in     */
+/*  this mode red becomes blue rather than a different shade of red.    */
+/* ================================================================== */
+
+body.cb { --red: #1f6fb2; --red-hot: #57a7e0; }
+body.cb .bet.red::after,
+body.cb .pocket-pick.red::after {
+  content: '▲';
+  position: absolute; left: 2px; top: 0;
+  font-size: 8px; opacity: .75; color: #fff;
+}
+body.cb .bet.black::after,
+body.cb .pocket-pick.black::after {
+  content: '■';
+  position: absolute; left: 2px; top: 0;
+  font-size: 8px; opacity: .6; color: #fff;
+}
+
+/* Very narrow windows: give the felt its space back by shrinking the sidebar.
+   The !important beats the inline grid-template-columns that render() sets. */
+@media (max-width: 940px) {
+  #app { grid-template-columns: 202px 1fr !important; padding: 8px; gap: 8px; }
+  #sidebar { padding: 8px; }
+  .felt { padding: 5px; }
+  .felt-grid { grid-template-columns: 22px repeat(12, 1fr) 32px; gap: 2px; }
+  .bet { font-size: 11px; min-height: 18px; }
+  .strip .bet { font-size: 7px; }
+  .chipstack { width: 17px; height: 17px; font-size: 10px; }
+  .stat .val { font-size: 18px; }
+  .card { width: 82px; }
+  .slot-empty { width: 82px; }
+}
+
+.dangerzone {
+  margin-top: 16px;
+  padding: 10px 12px;
+  border: 1px solid #6b2a24;
+  border-radius: 8px;
+  background: rgba(192,57,43,.10);
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+}
+.dangerzone > span { font-size: 12px; color: #c9857e; }
+.btn.danger {
+  background: linear-gradient(180deg, #7c2b22, #4d1a14);
+  border-color: #b04437;
+  color: #ffd9d3;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Arcade alignment                                                   */
+/*  ------------------------------------------------------------------ */
+/*  No Limit keeps its felt, its wheel and its palette; these rules pull */
+/*  its shape and press-feel onto the shared scale in                   */
+/*  shared/css/arcade.css, so corners, panel lift and button response   */
+/*  match the rest of the arcade. Appended rather than woven in, so the  */
+/*  design-system layer stays legible.                                  */
+
+.panel,
+.blindcard,
+.scorebox { border-radius: var(--ac-r-md); }
+
+.btn { border-radius: var(--ac-r-md); box-shadow: var(--ac-lift-1); letter-spacing: .08em; }
+.btn:active:not(:disabled) { transform: translateY(2px); box-shadow: none; }
+.btn:focus-visible { outline: 2px solid var(--ac-gold); outline-offset: 2px; }
+
+#tooltip { border-radius: var(--ac-r-md); }
+.modal-box { border-radius: var(--ac-r-lg); box-shadow: var(--ac-lift-3); }
+.seedinput { border-radius: var(--ac-r-sm); }
+
+/* Shared caps treatment: one tracking value for every small uppercase label. */
+.brand,
+.target .lbl,
+.scorebox .lbl,
+.section-h,
+.screen-title,
+.subtitle { letter-spacing: var(--ac-track-caps); }
+
+/* Keep the fixed arcade bar clear of the token bar. The clearance is measured
+   from the bar itself, so a long player name cannot grow into the game.
+   The stage is a single-column grid whose column would otherwise size to its
+   widest row — the token bar, reserved strip included — and stretch the felt
+   past the viewport. `minmax(0, 1fr)` pins that column to the stage instead. */
+#stage { min-width: 0; grid-template-columns: minmax(0, 1fr); }
+#tokenbar { padding-right: calc(var(--ac-bar-w) + var(--ac-s3)); min-width: 0; }
