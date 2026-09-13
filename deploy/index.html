@@ -233,6 +233,9 @@ html[data-arcade-game="hub"] {
 .ac-btn--sm { padding: 6px 11px; font-size: var(--ac-fs-tiny); }
 .ac-btn--lg { padding: 13px 26px; font-size: var(--ac-fs-md); }
 .ac-btn--block { width: 100%; }
+/* The "back to the arcade" link: a button that is actually an anchor. */
+.ac-btn--home { text-decoration: none; color: var(--ac-gold); }
+.ac-btn--home .ac-bar__diamond { width: 7px; height: 7px; }
 
 /* ---- surfaces ---------------------------------------------------------- */
 .ac-panel {
@@ -325,24 +328,58 @@ html[data-arcade-game="hub"] {
   user-select: none;
 }
 
+/* Brand group: the wordmark links home, the caret opens the switcher. */
+.ac-bar__brand {
+  display: flex;
+  align-items: center;
+  border-right: 1px solid var(--ac-line);
+  padding-right: 4px;
+  margin-right: var(--ac-s1);
+}
+
 .ac-bar__mark {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 10px 0 8px;
+  padding: 5px 8px;
+  border-radius: var(--ac-r-pill);
   font-size: var(--ac-fs-micro);
   letter-spacing: var(--ac-track-caps);
   text-transform: uppercase;
   color: var(--ac-gold);
   border: 0;
-  border-right: 1px solid var(--ac-line);
-  margin-right: var(--ac-s1);
   cursor: pointer;
   background: none;
+  text-decoration: none;
   font-family: inherit;
   font-weight: 700;
+  transition: background var(--ac-fast), filter var(--ac-fast);
 }
-.ac-bar__mark:hover { filter: brightness(1.25); }
+.ac-bar__mark:hover { filter: brightness(1.25); background: var(--ac-surface-2); }
+.ac-bar__mark:focus-visible { outline: 2px solid var(--ac-gold); outline-offset: 1px; }
+
+/* On the hub itself there is nowhere to go, so the mark is a label. */
+.ac-bar__mark.is-here { cursor: default; }
+.ac-bar__mark.is-here:hover { filter: none; background: none; }
+
+.ac-bar__caret {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--ac-ink-dim);
+  background: none;
+  border: 0;
+  border-radius: var(--ac-r-pill);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--ac-fast), color var(--ac-fast);
+}
+.ac-bar__caret:hover { background: var(--ac-surface-2); color: var(--ac-ink); }
+.ac-bar__caret:focus-visible { outline: 2px solid var(--ac-gold); outline-offset: 1px; }
 .ac-bar__diamond {
   width: 9px; height: 9px;
   background: var(--ac-gold);
@@ -661,7 +698,9 @@ html[data-arcade-game="hub"] {
 
 @media (max-width: 720px) {
   .ac-bar { top: 6px; right: 6px; }
-  .ac-bar__mark span { display: none; }
+  /* Keep the diamond (and the link) but drop the word on narrow screens. */
+  .ac-bar__mark span:not(.ac-bar__diamond) { display: none; }
+  .ac-bar__mark { padding: 5px 6px; }
   .ac-stats { grid-template-columns: 1fr 1fr; }
 }
 
@@ -1611,7 +1650,7 @@ body.cb .pocket-pick.black::after {
 
   Arcade.hubHref = function () {
     if (Arcade.hubUrl && !Arcade.isLocal()) return Arcade.hubUrl;
-    return Arcade.options.rootPath + 'index.html';
+    return Arcade.options.rootPath + Arcade.options.hubPath;
   };
 
   Arcade.gameById = function (id) {
@@ -1632,7 +1671,10 @@ body.cb .pocket-pick.black::after {
     /* How far above the arcade root each game sits, so the game switcher can
        build links. Overridden per game in Arcade.init if a game is deployed
        standalone. */
-    rootPath: '../'
+    rootPath: '../',
+    /* Where the hub sits relative to the arcade root when browsing locally.
+       Deployed it is its own site, so Arcade.hubUrl wins and this is unused. */
+    hubPath: 'hub/index.html'
   };
 
   Arcade.isConfigured = function () {
@@ -2772,13 +2814,34 @@ body.cb .pocket-pick.black::after {
 
     bar = el('div', 'ac-bar ac-root');
 
-    var mark = el('button', 'ac-bar__mark');
-    mark.type = 'button';
-    mark.title = 'Switch game';
+    /* The wordmark goes home, the caret opens the switcher — the ordinary web
+       convention. Before this the mark did both jobs and the hub was two
+       clicks deep inside something labelled "switch game", which is not where
+       anyone looks for "back". */
+    var brand = el('div', 'ac-bar__brand');
+    var onHub = !currentGameId;
+
+    var mark = el(onHub ? 'div' : 'a', 'ac-bar__mark' + (onHub ? ' is-here' : ''));
     mark.appendChild(el('span', 'ac-bar__diamond'));
     mark.appendChild(el('span', null, 'Arcade'));
-    mark.addEventListener('click', function (e) { e.stopPropagation(); toggleSwitcher(); });
-    bar.appendChild(mark);
+    if (onHub) {
+      mark.title = 'You are at the arcade hub';
+    } else {
+      mark.href = Arcade.hubHref();
+      mark.title = 'Back to the arcade hub';
+      mark.setAttribute('aria-label', 'Back to the arcade hub');
+    }
+    brand.appendChild(mark);
+
+    var caret = el('button', 'ac-bar__caret', '▾');
+    caret.type = 'button';
+    caret.title = 'Switch game';
+    caret.setAttribute('aria-label', 'Switch game');
+    caret.setAttribute('aria-haspopup', 'true');
+    caret.addEventListener('click', function (e) { e.stopPropagation(); toggleSwitcher(); });
+    brand.appendChild(caret);
+
+    bar.appendChild(brand);
 
     var lb = el('button', 'ac-bar__btn', 'Leaderboard');
     lb.type = 'button';
@@ -2863,6 +2926,18 @@ body.cb .pocket-pick.black::after {
   function inlineActions(opts) {
     opts = opts || {};
     var row = el('div', 'ac-inline ac-root');
+
+    /* A real link, not a button: middle-click and "open in new tab" should
+       work the way they do anywhere else. Leftmost, so the brand sits in the
+       same place here as it does in the bar. */
+    if (opts.hub !== false) {
+      var home = el('a', 'ac-btn ac-btn--sm ac-btn--home');
+      home.href = Arcade.hubHref();
+      home.appendChild(el('span', 'ac-bar__diamond'));
+      home.appendChild(el('span', null, opts.hubLabel || 'Arcade'));
+      row.appendChild(home);
+    }
+
     row.appendChild(btn(opts.leaderboardLabel || 'Leaderboard', 'ac-btn--sm', function () {
       showLeaderboard(opts.gameId || currentGameId);
     }));
