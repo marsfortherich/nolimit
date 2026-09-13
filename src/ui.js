@@ -111,7 +111,13 @@ export function attach(game) {
   // Shared account + leaderboard layer: resolves who is signed in before the
   // title screen draws.
   const arcade = typeof globalThis !== 'undefined' ? globalThis.Arcade : null;
-  if (arcade) arcade.init({ gameId: 'nolimit' });
+  if (arcade) {
+    arcade.init({ gameId: 'nolimit' });
+    arcade.ui.setSound({
+      ui: () => Sfx.ui(), success: () => Sfx.coin(),
+      deny: () => Sfx.deny(), achievement: () => Sfx.win()
+    });
+  }
   bindGame(game);
 }
 
