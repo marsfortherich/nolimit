@@ -3408,19 +3408,18 @@ const DEFAULTS = {
   colourblind: false
 };
 
-function detectReducedMotion() {
-  try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
-  catch (e) { return false; }
-}
-
 const Settings = { ...DEFAULTS };
 
 function loadSettings() {
   let stored = {};
   try { stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'); } catch (e) { /* no storage */ }
   Object.assign(Settings, DEFAULTS, stored);
-  // Honour the OS preference unless the player has said otherwise here.
-  if (stored.reducedMotion === undefined && detectReducedMotion()) Settings.reducedMotion = true;
+  /* Reduced motion is off unless the player asks for it here.
+     It used to default to the OS `prefers-reduced-motion` setting, which is
+     the textbook behaviour but wrong for this game: the wheel spin is not
+     decoration, it is how a result is delivered, and switching it off by
+     default left players watching a wheel that never moved. The toggle is
+     one click away in Options for anyone who wants it. */
   applyBodyFlags();
   return Settings;
 }
@@ -4971,7 +4970,13 @@ function auNoise({ dur = 0.1, freq = 1200, q = 1, gain = 0.2, delay = 0, to = nu
   g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
   src.connect(f).connect(g).connect(bus || auMaster);
   // A random read offset keeps repeated bursts from being the same waveform.
-  src.start(t0, Math.random() * (auNoiseBuf.duration - dur - 0.05));
+  /* Read from a random point in the buffer, but never before the start of it.
+     The spin rattle asks for 2.6s from a 2s buffer, which made this negative
+     and threw a RangeError out of Sfx.spin — and out of doSpin with it, so the
+     wheel never animated and the round hung on "the ball is still running".
+     The source loops, so a request longer than the buffer simply wraps. */
+  const maxOffset = Math.max(0, auNoiseBuf.duration - dur - 0.05);
+  src.start(t0, Math.random() * maxOffset);
   src.stop(t0 + dur + 0.02);
   auTrack(src, g, delay + dur);
 }
@@ -5010,6 +5015,8 @@ const Sfx = {
   // cut it rather than leaving the ball rattling after it has landed.
   spin: (seconds = 2.2) => {
     if (!auOn()) return;
+    // Clamp to something the buffer and the voice budget can actually serve.
+    seconds = Math.max(0.2, Math.min(8, seconds));
     auSpinBus.gain.cancelScheduledValues(auNow());
     auSpinBus.gain.setValueAtTime(1, auNow());
     auNoise({ dur: seconds, freq: 2400, to: 380, q: 6, gain: 0.13, bus: auSpinBus });
@@ -7367,7 +7374,10 @@ function doSpin() {
   if (G.round.phase !== 'resolved') { wheelDisarm(); revealPending = false; render(); return; }  // Second Sight
 
   const dur = spinDuration();
-  if (dur > 300) Sfx.spin(dur / 1000);
+  // Sound is decoration; a failure in it must never cost the player their
+  // spin. Not hypothetical: a RangeError thrown in here once escaped doSpin,
+  // so the wheel never animated and the round hung "still running".
+  if (dur > 300) { try { Sfx.spin(dur / 1000); } catch (e) { /* play on in silence */ } }
   spinAndReveal(dur);
 }
 
@@ -7393,7 +7403,10 @@ function takeCandidate(idx) {
   wheelArm();
   G.chooseCandidate(idx);
   const dur = spinDuration();
-  if (dur > 300) Sfx.spin(dur / 1000);
+  // Sound is decoration; a failure in it must never cost the player their
+  // spin. Not hypothetical: a RangeError thrown in here once escaped doSpin,
+  // so the wheel never animated and the round hung "still running".
+  if (dur > 300) { try { Sfx.spin(dur / 1000); } catch (e) { /* play on in silence */ } }
   spinAndReveal(dur);
 }
 
@@ -7686,6 +7699,11 @@ function showSettings() {
       Sfx.ui();
       b.className = 'btn sm' + (Settings[key] ? ' green' : '');
       b.textContent = Settings[key] ? 'On' : 'Off';
+      // Some of these change how the table behaves, not just how it looks —
+      // reduced motion decides whether the wheel animates at all — so the
+      // board is rebuilt rather than left showing the old behaviour until
+      // something else happens to redraw it.
+      render();
     });
     return b;
   };

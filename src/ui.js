@@ -694,7 +694,10 @@ function doSpin() {
   if (G.round.phase !== 'resolved') { wheelDisarm(); revealPending = false; render(); return; }  // Second Sight
 
   const dur = spinDuration();
-  if (dur > 300) Sfx.spin(dur / 1000);
+  // Sound is decoration; a failure in it must never cost the player their
+  // spin. Not hypothetical: a RangeError thrown in here once escaped doSpin,
+  // so the wheel never animated and the round hung "still running".
+  if (dur > 300) { try { Sfx.spin(dur / 1000); } catch (e) { /* play on in silence */ } }
   spinAndReveal(dur);
 }
 
@@ -720,7 +723,10 @@ function takeCandidate(idx) {
   wheelArm();
   G.chooseCandidate(idx);
   const dur = spinDuration();
-  if (dur > 300) Sfx.spin(dur / 1000);
+  // Sound is decoration; a failure in it must never cost the player their
+  // spin. Not hypothetical: a RangeError thrown in here once escaped doSpin,
+  // so the wheel never animated and the round hung "still running".
+  if (dur > 300) { try { Sfx.spin(dur / 1000); } catch (e) { /* play on in silence */ } }
   spinAndReveal(dur);
 }
 
@@ -1013,6 +1019,11 @@ function showSettings() {
       Sfx.ui();
       b.className = 'btn sm' + (Settings[key] ? ' green' : '');
       b.textContent = Settings[key] ? 'On' : 'Off';
+      // Some of these change how the table behaves, not just how it looks —
+      // reduced motion decides whether the wheel animates at all — so the
+      // board is rebuilt rather than left showing the old behaviour until
+      // something else happens to redraw it.
+      render();
     });
     return b;
   };

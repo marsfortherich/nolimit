@@ -131,7 +131,13 @@ function auNoise({ dur = 0.1, freq = 1200, q = 1, gain = 0.2, delay = 0, to = nu
   g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
   src.connect(f).connect(g).connect(bus || auMaster);
   // A random read offset keeps repeated bursts from being the same waveform.
-  src.start(t0, Math.random() * (auNoiseBuf.duration - dur - 0.05));
+  /* Read from a random point in the buffer, but never before the start of it.
+     The spin rattle asks for 2.6s from a 2s buffer, which made this negative
+     and threw a RangeError out of Sfx.spin — and out of doSpin with it, so the
+     wheel never animated and the round hung on "the ball is still running".
+     The source loops, so a request longer than the buffer simply wraps. */
+  const maxOffset = Math.max(0, auNoiseBuf.duration - dur - 0.05);
+  src.start(t0, Math.random() * maxOffset);
   src.stop(t0 + dur + 0.02);
   auTrack(src, g, delay + dur);
 }
@@ -170,6 +176,8 @@ export const Sfx = {
   // cut it rather than leaving the ball rattling after it has landed.
   spin: (seconds = 2.2) => {
     if (!auOn()) return;
+    // Clamp to something the buffer and the voice budget can actually serve.
+    seconds = Math.max(0.2, Math.min(8, seconds));
     auSpinBus.gain.cancelScheduledValues(auNow());
     auSpinBus.gain.setValueAtTime(1, auNow());
     auNoise({ dur: seconds, freq: 2400, to: 380, q: 6, gain: 0.13, bus: auSpinBus });

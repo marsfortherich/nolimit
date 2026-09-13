@@ -13,19 +13,18 @@ const DEFAULTS = {
   colourblind: false
 };
 
-function detectReducedMotion() {
-  try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
-  catch (e) { return false; }
-}
-
 export const Settings = { ...DEFAULTS };
 
 export function loadSettings() {
   let stored = {};
   try { stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'); } catch (e) { /* no storage */ }
   Object.assign(Settings, DEFAULTS, stored);
-  // Honour the OS preference unless the player has said otherwise here.
-  if (stored.reducedMotion === undefined && detectReducedMotion()) Settings.reducedMotion = true;
+  /* Reduced motion is off unless the player asks for it here.
+     It used to default to the OS `prefers-reduced-motion` setting, which is
+     the textbook behaviour but wrong for this game: the wheel spin is not
+     decoration, it is how a result is delivered, and switching it off by
+     default left players watching a wheel that never moved. The toggle is
+     one click away in Options for anyone who wants it. */
   applyBodyFlags();
   return Settings;
 }
