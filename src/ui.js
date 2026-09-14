@@ -236,7 +236,7 @@ function sidebar() {
   out.push(h('div.section-h', null, h('span', null, 'Wheel'), h('span', null, `${G.wheel.length} pockets`)));
   out.push(h('div.sidebtns', null,
     h('button.btn.sm', { onclick: showWheelSheet }, 'Wheel'),
-    h('button.btn.sm', { onclick: showSettings }, 'Options')));
+    h('button.btn.sm', { onclick: showSettings }, 'Settings')));
 
   if (G.messages.length) {
     out.push(h('div.section-h', null, h('span', null, 'Table talk')));
@@ -381,7 +381,8 @@ function titleScreen() {
     h('div.btnrow', null,
       h('button.btn.sm', { onclick: showProfile }, 'Records'),
       h('button.btn.sm', { onclick: showCollection }, `Collection ${Object.keys(Profile.seenTokens).length}/${TOKENS.length}`),
-      h('button.btn.sm', { onclick: showSettings }, 'Options')),
+      h('button.btn.sm', { onclick: showSettings }, 'Settings'),
+      h('button.btn.sm', { onclick: showHelp }, 'How to Play')),
     arcadeRow(),
     h('div.hint', null, 'Click a spot to add a chip · right-click to take one back · Space to spin'));
 }
@@ -1028,6 +1029,31 @@ function showWheelSheet() {
     h('div.modalsub', null, `${Math.max(0, FULL_WHEEL - G.wheel.length)} removed from a standard wheel`), picker));
 }
 
+/* The game explained in one screen. It had none: the rules lived in the README
+   and in whatever the player worked out from the felt. */
+function showHelp() {
+  const rule = (title, body) => h('div.helprule', null,
+    h('b', null, title), h('span', { html: body }));
+
+  openModal(modalBox('How to play',
+    h('div.helprules', null,
+      rule('Place chips', 'Click a spot on the felt to put a chip down, right-click to take one back. ' +
+        'You have a fixed number of chips each round — spreading them wide is safer, stacking them is not.'),
+      rule('Spin', 'The ball lands in one pocket. Every bet covering that pocket pays: ' +
+        '<b>chips × multiplier</b>, totalled into your round score.'),
+      rule('Beat the table', 'Clear the target before your spins run out. Miss it and the run ends.'),
+      rule('Nudge', 'After the ball settles you may nudge it one pocket either way, a limited number ' +
+        'of times per round. It is the difference between a near miss and a payout.'),
+      rule('Tokens', 'Bought between tables. They rewrite how scoring works and stack with each other — ' +
+        'the run is really about which machine you manage to build.'),
+      rule('The wheel', 'Some effects carve pockets out of the wheel entirely. A shorter wheel is a ' +
+        'denser one, which cuts both ways.'),
+      rule('Antes', 'Eight of them, three tables each, the last a Boss with a rule of its own. ' +
+        'Take all eight and the house folds.')),
+    h('div.modalsub', { style: { marginTop: '14px' } },
+      'Space spins, and collects once the ball has landed · ← → nudge · Esc clears your bets')));
+}
+
 function showSettings() {
   const row = (label, control) => h('div.setrow', null, h('span', null, label), control);
   const toggle = (key) => {
@@ -1058,7 +1084,7 @@ function showSettings() {
   });
   speed.addEventListener('change', () => setSetting('speed', Number(speed.value)));
 
-  openModal(modalBox('Options',
+  openModal(modalBox('Settings',
     row('Volume', vol),
     row('Sound effects', toggle('sfx')),
     row('Animation speed', speed),

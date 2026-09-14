@@ -788,3 +788,26 @@ body.cb .pocket-pick.black::after {
    past the viewport. `minmax(0, 1fr)` pins that column to the stage instead. */
 #stage { min-width: 0; grid-template-columns: minmax(0, 1fr); }
 #tokenbar { padding-right: calc(var(--ac-bar-w) + var(--ac-s3)); min-width: 0; }
+
+/* How to Play */
+.helprules { display: flex; flex-direction: column; gap: 10px; max-width: 620px; margin: 0 auto; }
+.helprule {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 14px;
+  align-items: baseline;
+  background: rgba(255, 255, 255, .04);
+  border-radius: var(--ac-r-sm);
+  padding: 9px 12px;
+}
+.helprule b {
+  color: var(--gold);
+  font-size: 12px;
+  letter-spacing: var(--ac-track-caps);
+  text-transform: uppercase;
+}
+.helprule span { font-size: 13px; line-height: 1.6; color: var(--ink); }
+.helprule span b { color: var(--gold-hot); text-transform: none; letter-spacing: 0; font-size: 13px; }
+@media (max-width: 640px) {
+  .helprule { grid-template-columns: 1fr; gap: 4px; }
+}

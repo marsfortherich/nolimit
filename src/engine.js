@@ -37,10 +37,16 @@ function metaBonus(key) {
   return (a && a.progress) ? a.progress.bonus('nolimit', key) : 0;
 }
 
+/* A good spin here genuinely reaches ten figures, and "8,574,634,687" does not
+   fit the score box or a leaderboard cell. Past a billion it becomes "8.57e9",
+   which is six characters at any magnitude. Matches Arcade.options.compactAbove
+   so the same number never reads two different ways on one screen. */
+const COMPACT_ABOVE = 1e9;
+
 export function fmt(n) {
-  if (n === undefined || n === null) return '0';
+  if (n === undefined || n === null || n !== n) return '0';
   if (!isFinite(n)) return '∞';
-  if (Math.abs(n) >= 1e15) return n.toExponential(2).replace('e+', 'e');
+  if (Math.abs(n) >= COMPACT_ABOVE) return n.toExponential(2).replace('e+', 'e');
   if (Number.isInteger(n)) return n.toLocaleString('en-US');
   return round2(n).toLocaleString('en-US');
 }

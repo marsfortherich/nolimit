@@ -958,6 +958,58 @@ html[data-arcade-game="hub"] {
   .ac-dealer.is-talking .ac-dealer__mouth,
   .ac-dealer__eyes { animation: none; }
 }
+
+/* An owned unlock you can put down again. */
+.ac-switch-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  background: none;
+  border: 0;
+  padding: 2px;
+  cursor: pointer;
+  font-family: var(--ac-font-ui);
+  font-size: var(--ac-fs-micro);
+  letter-spacing: var(--ac-track-caps);
+  text-transform: uppercase;
+  color: var(--ac-ink-dim);
+}
+.ac-switch-btn__track {
+  width: 32px;
+  height: 18px;
+  border-radius: var(--ac-r-pill);
+  background: var(--ac-surface-0);
+  border: 1px solid var(--ac-line);
+  position: relative;
+  transition: background var(--ac-fast), border-color var(--ac-fast);
+}
+.ac-switch-btn__track::after {
+  content: "";
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: var(--ac-ink-dim);
+  transition: transform var(--ac-fast), background var(--ac-fast);
+}
+.ac-switch-btn.is-on { color: var(--ac-good); }
+.ac-switch-btn.is-on .ac-switch-btn__track { background: rgba(63, 169, 107, .25); border-color: var(--ac-good); }
+.ac-switch-btn.is-on .ac-switch-btn__track::after { transform: translateX(14px); background: var(--ac-good); }
+.ac-switch-btn:focus-visible { outline: 2px solid var(--ac-gold); outline-offset: 2px; }
+
+/* "On" and "Off" are different widths, and a row that twitches every time you
+   flip it reads as a glitch rather than a switch. */
+.ac-switch-btn__label { min-width: 22px; text-align: left; }
+
+/* Set aside: still owned, visibly not in play. */
+.ac-unlock.is-off { border-color: var(--ac-line); background: var(--ac-surface-2); }
+.ac-unlock.is-off .ac-unlock__name,
+.ac-unlock.is-off .ac-unlock__desc { opacity: .55; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ac-switch-btn__track, .ac-switch-btn__track::after { transition: none; }
+}
 </style>
 <style>
 /* ------------------------------------------------------------------ */
@@ -1750,6 +1802,29 @@ body.cb .pocket-pick.black::after {
    past the viewport. `minmax(0, 1fr)` pins that column to the stage instead. */
 #stage { min-width: 0; grid-template-columns: minmax(0, 1fr); }
 #tokenbar { padding-right: calc(var(--ac-bar-w) + var(--ac-s3)); min-width: 0; }
+
+/* How to Play */
+.helprules { display: flex; flex-direction: column; gap: 10px; max-width: 620px; margin: 0 auto; }
+.helprule {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 14px;
+  align-items: baseline;
+  background: rgba(255, 255, 255, .04);
+  border-radius: var(--ac-r-sm);
+  padding: 9px 12px;
+}
+.helprule b {
+  color: var(--gold);
+  font-size: 12px;
+  letter-spacing: var(--ac-track-caps);
+  text-transform: uppercase;
+}
+.helprule span { font-size: 13px; line-height: 1.6; color: var(--ink); }
+.helprule span b { color: var(--gold-hot); text-transform: none; letter-spacing: 0; font-size: 13px; }
+@media (max-width: 640px) {
+  .helprule { grid-template-columns: 1fr; gap: 4px; }
+}
 </style>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%230d3b2a' stroke='%23d9b45b' stroke-width='3'/><circle cx='16' cy='7' r='3' fill='%23f4f0e6'/></svg>" />
 </head>
@@ -1970,6 +2045,9 @@ body.cb .pocket-pick.black::after {
   Arcade.options = {
     topN: 5,               // how many rows the leaderboard shows
     rankScanLimit: 200,    // fallback rank scan depth when count() is absent
+    /* Above this, numbers render as 8.57e9 rather than 8,574,634,687, so a
+       score can never outgrow the box it sits in. */
+    compactAbove: 1e9,
     minNameLength: 3,
     maxNameLength: 20,
     /* How far above the arcade root each game sits, so the game switcher can
@@ -2899,7 +2977,7 @@ body.cb .pocket-pick.black::after {
   }
 
   function blankGame() {
-    return { runs: 0, wins: 0, best: 0, currency: {}, unlocked: {}, clears: {} };
+    return { runs: 0, wins: 0, best: 0, currency: {}, unlocked: {}, off: {}, clears: {} };
   }
 
   var data = null;
@@ -2932,6 +3010,7 @@ body.cb .pocket-pick.black::after {
     var g = s.games[gameId];
     if (!g.currency) g.currency = {};
     if (!g.unlocked) g.unlocked = {};
+    if (!g.off) g.off = {};
     if (!g.clears) g.clears = {};
     return g;
   }
@@ -2973,8 +3052,36 @@ body.cb .pocket-pick.black::after {
     return null;
   }
 
+  /** Owned — bought and paid for, whether or not it is currently applied. */
   function isUnlocked(gameId, unlockId) {
     return !!game(gameId).unlocked[unlockId];
+  }
+
+  /**
+   * Owned *and* switched on.
+   *
+   * Progression is a one-way ratchet on difficulty otherwise: once you own the
+   * sixth die there is no way back to the game without it. Owning and applying
+   * are therefore separate, so a player can put an advantage down without
+   * losing what they paid for it.
+   */
+  function isActive(gameId, unlockId) {
+    var g = game(gameId);
+    return !!g.unlocked[unlockId] && !g.off[unlockId];
+  }
+
+  /** Switch an owned unlock on or off. Returns the new state. */
+  function setActive(gameId, unlockId, on) {
+    var g = game(gameId);
+    if (!g.unlocked[unlockId]) return false;
+    if (on) delete g.off[unlockId];
+    else g.off[unlockId] = true;
+    save();
+    return isActive(gameId, unlockId);
+  }
+
+  function toggle(gameId, unlockId) {
+    return setActive(gameId, unlockId, !isActive(gameId, unlockId));
   }
 
   /** Buy an unlock. Returns { ok, reason } — never throws at a caller. */
@@ -3002,7 +3109,8 @@ body.cb .pocket-pick.black::after {
     if (!p) return out;
     var g = game(gameId);
     p.unlocks.forEach(function (u) {
-      if (!g.unlocked[u.id] || !u.effect) return;
+      // Switched-off unlocks contribute nothing, which is the whole point.
+      if (!isActive(gameId, u.id) || !u.effect) return;
       var bits = String(u.effect).split(':');
       var key = bits[0];
       var val = bits.length > 1 ? bits[1] : '1';
@@ -3170,7 +3278,8 @@ body.cb .pocket-pick.black::after {
     },
     forGame: game,
     balance: balance, grant: grant, currencyId: currencyId,
-    buy: buy, isUnlocked: isUnlocked, unlockDef: unlockDef,
+    buy: buy, isUnlocked: isUnlocked, isActive: isActive,
+    setActive: setActive, toggle: toggle, unlockDef: unlockDef,
     effects: effects, bonus: bonus, granted: granted,
     award: award, hasAchievement: hasAchievement,
     achievementsFor: achievementsFor, achievementProgress: achievementProgress,
@@ -3508,10 +3617,21 @@ body.cb .pocket-pick.black::after {
     return s.toUpperCase();
   }
 
+  /**
+   * A number that fits.
+   *
+   * Grouped digits stay readable up to a point, and these are score-attack
+   * games where a good No Limit spin genuinely reaches ten figures —
+   * "8,574,634,687" is thirteen characters and overflows a leaderboard cell
+   * and a sidebar box alike. Past the threshold it becomes "8.57e9": six
+   * characters whatever the magnitude.
+   */
   function fmt(n) {
-    if (n === null || n === undefined) return '—';
+    if (n === null || n === undefined || n !== n) return '—';
     if (!isFinite(n)) return '∞';
-    if (Math.abs(n) >= 1e15) return Number(n).toExponential(2).replace('e+', 'e');
+    var a = Math.abs(n);
+    var limit = (Arcade.options && Arcade.options.compactAbove) || 1e9;
+    if (a >= limit) return Number(n).toExponential(2).replace('e+', 'e');
     return Math.round(n).toLocaleString('en-US');
   }
 
@@ -4220,7 +4340,27 @@ body.cb .pocket-pick.black::after {
       row.appendChild(text);
 
       if (owned) {
-        row.appendChild(el('span', 'ac-unlock__owned', 'Unlocked'));
+        /* Owned is not the same as applied. Without this, progression is a
+           one-way ratchet on difficulty: buy the sixth die and there is no
+           route back to the game without it. */
+        var on = Arcade.progress.isActive(gameId, u.id);
+        var sw = el('button', 'ac-switch-btn' + (on ? ' is-on' : ''));
+        sw.type = 'button';
+        sw.setAttribute('role', 'switch');
+        sw.setAttribute('aria-checked', on ? 'true' : 'false');
+        sw.title = on ? 'Applied to every run — click to set it aside'
+                      : 'Owned but not applied — click to switch it back on';
+        sw.appendChild(el('span', 'ac-switch-btn__track'));
+        sw.appendChild(el('span', 'ac-switch-btn__label', on ? 'On' : 'Off'));
+        sw.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var nowOn = Arcade.progress.toggle(gameId, u.id);
+          play(nowOn ? 'success' : 'ui');
+          toast(u.label + (nowOn ? ' applied' : ' set aside'), nowOn ? 'good' : null);
+          redraw();
+        });
+        row.classList.toggle('is-off', !on);
+        row.appendChild(sw);
       } else {
         var b = btn(prog.currency.icon + ' ' + u.cost,
           'ac-btn--sm' + (afford ? ' ac-btn--gold' : ''), function () {
@@ -7092,10 +7232,16 @@ function metaBonus(key) {
   return (a && a.progress) ? a.progress.bonus('nolimit', key) : 0;
 }
 
+/* A good spin here genuinely reaches ten figures, and "8,574,634,687" does not
+   fit the score box or a leaderboard cell. Past a billion it becomes "8.57e9",
+   which is six characters at any magnitude. Matches Arcade.options.compactAbove
+   so the same number never reads two different ways on one screen. */
+const COMPACT_ABOVE = 1e9;
+
 function fmt(n) {
-  if (n === undefined || n === null) return '0';
+  if (n === undefined || n === null || n !== n) return '0';
   if (!isFinite(n)) return '∞';
-  if (Math.abs(n) >= 1e15) return n.toExponential(2).replace('e+', 'e');
+  if (Math.abs(n) >= COMPACT_ABOVE) return n.toExponential(2).replace('e+', 'e');
   if (Number.isInteger(n)) return n.toLocaleString('en-US');
   return round2(n).toLocaleString('en-US');
 }
@@ -8437,7 +8583,7 @@ function sidebar() {
   out.push(h('div.section-h', null, h('span', null, 'Wheel'), h('span', null, `${G.wheel.length} pockets`)));
   out.push(h('div.sidebtns', null,
     h('button.btn.sm', { onclick: showWheelSheet }, 'Wheel'),
-    h('button.btn.sm', { onclick: showSettings }, 'Options')));
+    h('button.btn.sm', { onclick: showSettings }, 'Settings')));
 
   if (G.messages.length) {
     out.push(h('div.section-h', null, h('span', null, 'Table talk')));
@@ -8582,7 +8728,8 @@ function titleScreen() {
     h('div.btnrow', null,
       h('button.btn.sm', { onclick: showProfile }, 'Records'),
       h('button.btn.sm', { onclick: showCollection }, `Collection ${Object.keys(Profile.seenTokens).length}/${TOKENS.length}`),
-      h('button.btn.sm', { onclick: showSettings }, 'Options')),
+      h('button.btn.sm', { onclick: showSettings }, 'Settings'),
+      h('button.btn.sm', { onclick: showHelp }, 'How to Play')),
     arcadeRow(),
     h('div.hint', null, 'Click a spot to add a chip · right-click to take one back · Space to spin'));
 }
@@ -9229,6 +9376,31 @@ function showWheelSheet() {
     h('div.modalsub', null, `${Math.max(0, FULL_WHEEL - G.wheel.length)} removed from a standard wheel`), picker));
 }
 
+/* The game explained in one screen. It had none: the rules lived in the README
+   and in whatever the player worked out from the felt. */
+function showHelp() {
+  const rule = (title, body) => h('div.helprule', null,
+    h('b', null, title), h('span', { html: body }));
+
+  openModal(modalBox('How to play',
+    h('div.helprules', null,
+      rule('Place chips', 'Click a spot on the felt to put a chip down, right-click to take one back. ' +
+        'You have a fixed number of chips each round — spreading them wide is safer, stacking them is not.'),
+      rule('Spin', 'The ball lands in one pocket. Every bet covering that pocket pays: ' +
+        '<b>chips × multiplier</b>, totalled into your round score.'),
+      rule('Beat the table', 'Clear the target before your spins run out. Miss it and the run ends.'),
+      rule('Nudge', 'After the ball settles you may nudge it one pocket either way, a limited number ' +
+        'of times per round. It is the difference between a near miss and a payout.'),
+      rule('Tokens', 'Bought between tables. They rewrite how scoring works and stack with each other — ' +
+        'the run is really about which machine you manage to build.'),
+      rule('The wheel', 'Some effects carve pockets out of the wheel entirely. A shorter wheel is a ' +
+        'denser one, which cuts both ways.'),
+      rule('Antes', 'Eight of them, three tables each, the last a Boss with a rule of its own. ' +
+        'Take all eight and the house folds.')),
+    h('div.modalsub', { style: { marginTop: '14px' } },
+      'Space spins, and collects once the ball has landed · ← → nudge · Esc clears your bets')));
+}
+
 function showSettings() {
   const row = (label, control) => h('div.setrow', null, h('span', null, label), control);
   const toggle = (key) => {
@@ -9259,7 +9431,7 @@ function showSettings() {
   });
   speed.addEventListener('change', () => setSetting('speed', Number(speed.value)));
 
-  openModal(modalBox('Options',
+  openModal(modalBox('Settings',
     row('Volume', vol),
     row('Sound effects', toggle('sfx')),
     row('Animation speed', speed),
