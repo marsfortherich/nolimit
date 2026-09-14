@@ -89,6 +89,12 @@ function tip(el, data) {
 
 function hideTip() { const t = $('tooltip'); if (t) t.hidden = true; }
 
+/** The dealer, if the arcade layer is present. */
+function dealer() {
+  const a = typeof globalThis !== 'undefined' ? globalThis.Arcade : null;
+  return a && a.dealer ? a.dealer : null;
+}
+
 /** The shared arcade buttons, for this game's own title and end screens. */
 function arcadeRow() {
   const arcade = typeof globalThis !== 'undefined' ? globalThis.Arcade : null;
@@ -326,6 +332,8 @@ let titleWheel = 'house';
 let titleStake = 'white';
 
 function titleScreen() {
+  const d = dealer();
+  if (d) d.greet('nolimit');
   const saved = Game.load();
   if (!wheelUnlocked(titleWheel)) titleWheel = 'house';
   if (!stakeUnlocked(titleStake)) titleStake = 'white';
@@ -921,6 +929,8 @@ function unlockNotes() {
 }
 
 function gameOverScreen() {
+  const d = dealer();
+  if (d) d.reactToRun({ ante: G.ante, score: G.stats.best, won: false });
   const rd = G.round;
   return h('div.centered', null,
     h('h1.bigtitle.lose', null, 'Wiped out'),
@@ -937,6 +947,8 @@ function gameOverScreen() {
 }
 
 function winScreen() {
+  const d = dealer();
+  if (d) d.reactToRun({ ante: G.ante, score: G.stats.best, won: true });
   return h('div.centered', null,
     h('h1.bigtitle', null, 'The house folds'),
     h('div.subtitle', null, `Ante ${FINAL_ANTE} cleared · ${STAKES_BY_ID[G.stakeId].name}`),

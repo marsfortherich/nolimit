@@ -56,6 +56,7 @@ ARCADE_SCRIPTS = [
     'shared/js/arcade-scores.js',
     'shared/js/arcade-catalogue.js',
     'shared/js/arcade-progress.js',
+    'shared/js/arcade-dealer.js',
     'shared/js/arcade-ui.js',
     'shared/js/arcade-broker.js',
     'shared/js/arcade.js',

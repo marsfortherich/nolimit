@@ -869,6 +869,95 @@ html[data-arcade-game="hub"] {
   }
   .ac-achvbar__fill { transition: none; }
 }
+
+/* ============================================================================
+   The Dealer
+   --------------------------------------------------------------------------
+   Bottom-left, above everything, and never in the way: he is pointer-events
+   none except for his own box, so a line arriving while you are mid-click
+   cannot steal it.
+   ========================================================================= */
+
+.ac-dealer {
+  position: fixed;
+  left: 14px;
+  bottom: 14px;
+  z-index: var(--ac-z-toast);
+  display: flex;
+  align-items: flex-end;
+  gap: var(--ac-s2);
+  max-width: min(420px, calc(100vw - 28px));
+  font-family: var(--ac-font-ui);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+  transition: opacity var(--ac-slow), transform var(--ac-slow);
+}
+.ac-dealer.is-in { opacity: 1; transform: none; pointer-events: auto; }
+
+.ac-dealer__face { flex: none; line-height: 0; filter: drop-shadow(0 3px 0 rgba(0, 0, 0, .45)); }
+
+.ac-dealer__bubble {
+  position: relative;
+  background: var(--ac-surface-1);
+  border: 1px solid var(--ac-line);
+  border-left: 3px solid var(--ac-gold);
+  border-radius: var(--ac-r-md);
+  box-shadow: var(--ac-lift-2);
+  padding: var(--ac-s2) var(--ac-s3) var(--ac-s3);
+  min-height: 46px;
+}
+/* The tail, pointing back at the face. */
+.ac-dealer__bubble::before {
+  content: "";
+  position: absolute;
+  left: -7px;
+  bottom: 14px;
+  width: 8px;
+  height: 8px;
+  background: var(--ac-gold);
+  clip-path: polygon(100% 0, 100% 100%, 0 50%);
+}
+.ac-dealer__name {
+  font-size: var(--ac-fs-micro);
+  letter-spacing: var(--ac-track-caps);
+  text-transform: uppercase;
+  color: var(--ac-gold);
+  margin-bottom: 3px;
+}
+.ac-dealer__text {
+  font-size: var(--ac-fs-sm);
+  line-height: 1.5;
+  color: var(--ac-ink);
+  /* Reserve the caret's width so the last character does not shuffle. */
+  min-height: 1.5em;
+}
+/* A caret only while he is actually speaking. */
+.ac-dealer.is-talking .ac-dealer__text::after {
+  content: "▌";
+  color: var(--ac-gold);
+  animation: ac-caret .5s steps(1) infinite;
+}
+@keyframes ac-caret { 50% { opacity: 0; } }
+
+/* The mouth moves only while talking; the eyes blink on their own schedule so
+   he does not look switched off between lines. */
+.ac-dealer.is-talking .ac-dealer__mouth { animation: ac-mouth .16s steps(2) infinite; }
+@keyframes ac-mouth { 50% { transform: scaleY(3.2); transform-origin: 31px center; } }
+.ac-dealer__eyes { animation: ac-blink 5.2s infinite; transform-origin: center 26px; }
+@keyframes ac-blink { 0%, 95%, 100% { transform: scaleY(1); } 97.5% { transform: scaleY(.1); } }
+
+@media (max-width: 720px) {
+  .ac-dealer { left: 8px; bottom: 8px; max-width: calc(100vw - 16px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ac-dealer { transition: none; }
+  .ac-dealer.is-talking .ac-dealer__text::after,
+  .ac-dealer.is-talking .ac-dealer__mouth,
+  .ac-dealer__eyes { animation: none; }
+}
 </style>
 <style>
 /* ------------------------------------------------------------------ */
@@ -3092,6 +3181,290 @@ body.cb .pocket-pick.black::after {
 })(typeof window !== 'undefined' ? window : this);
 </script>
 <script>
+// ===== shared/js/arcade-dealer.js
+/* ============================================================================
+   arcade-dealer.js — the croupier.
+
+   One recurring character across all three tables: a face, a speech bubble,
+   text that types itself out, and a blip per character.
+
+   Two deliberate decisions.
+
+   The blip is synthesised here rather than borrowed from the host game through
+   Arcade.ui.setSound, which is how the rest of the shared chrome gets its
+   sound. The reasoning is the opposite of the usual one: the dealer is not
+   part of any game, he is the thing the games have in common, and a recurring
+   character who changes voice depending on which room he is standing in is not
+   really recurring. It is one oscillator, not an engine — no kit, no limiter,
+   no voice pool.
+
+   The face is drawn, not loaded. None of these games ship image files and the
+   dealer is not going to be the first.
+   ========================================================================= */
+(function (global) {
+  'use strict';
+
+  var Arcade = global.Arcade = global.Arcade || {};
+  var doc = global.document;
+
+  var host = null, bubble = null, textEl = null, faceEl = null;
+  var typing = null;          // the run in progress, so a new line can cut it off
+  var hideTimer = 0;
+  var ctx = null, broken = false;
+
+  /* ------------------------------------------------------------------ voice */
+
+  /** A short blip. Undertale's trick: pitch jitter is what stops it droning. */
+  function blip(seed) {
+    if (broken || !settingsAllowSound()) return;
+    try {
+      if (!ctx) {
+        var AC = global.AudioContext || global.webkitAudioContext;
+        if (!AC) { broken = true; return; }
+        ctx = new AC();
+      }
+      if (ctx.state === 'suspended') ctx.resume();
+      var t = ctx.currentTime;
+      var osc = ctx.createOscillator();
+      var g = ctx.createGain();
+      osc.type = 'square';
+      // A narrow band around the same note, so it reads as one mouth.
+      osc.frequency.setValueAtTime(320 + (seed % 7) * 11, t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.055, t + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.055);
+      osc.connect(g).connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.07);
+      osc.onended = function () { try { g.disconnect(); } catch (e) {} };
+    } catch (e) {
+      broken = true;
+    }
+  }
+
+  /** Honour whichever game's sound setting we are standing in. */
+  function settingsAllowSound() {
+    var PK = global.PK;
+    if (PK && PK.Settings) return PK.Settings.sfx !== false && PK.Settings.volume > 0;
+    var S = global.Settings;
+    if (S && typeof S.sfx === 'boolean') return S.sfx && S.volume > 0;
+    return true;
+  }
+
+  function motionOK() {
+    return !Arcade.ui || !Arcade.ui.motionOK || Arcade.ui.motionOK();
+  }
+
+  /* ------------------------------------------------------------------- face */
+
+  /* A dealer: visor, eyes, collar, tie. Drawn small enough to read at 46px and
+     simple enough that a blinking eye and a moving mouth are the whole
+     performance. */
+  var FACE = [
+    '<svg viewBox="0 0 48 48" width="46" height="46" aria-hidden="true">',
+    '<circle cx="24" cy="24" r="23" fill="var(--ac-surface-3)" stroke="var(--ac-gold)" stroke-width="2"/>',
+    '<path d="M6 19 Q24 7 42 19 L42 22 Q24 12 6 22 Z" fill="var(--ac-gold)"/>',   // visor
+    '<rect x="17" y="34" width="14" height="10" rx="2" fill="var(--ac-surface-0)"/>',
+    '<path d="M20 34 L24 39 L28 34 Z" fill="var(--ac-gold)"/>',                   // tie
+    '<g class="ac-dealer__eyes">',
+    '<circle cx="18" cy="26" r="2.4" fill="var(--ac-ink)"/>',
+    '<circle cx="30" cy="26" r="2.4" fill="var(--ac-ink)"/>',
+    '</g>',
+    '<rect class="ac-dealer__mouth" x="21" y="31" width="6" height="1.6" rx="0.8" fill="var(--ac-ink)"/>',
+    '</svg>'
+  ].join('');
+
+  function build() {
+    if (host) return;
+    host = doc.createElement('div');
+    host.className = 'ac-dealer ac-root';
+    host.setAttribute('role', 'status');
+
+    faceEl = doc.createElement('div');
+    faceEl.className = 'ac-dealer__face';
+    faceEl.innerHTML = FACE;
+
+    bubble = doc.createElement('div');
+    bubble.className = 'ac-dealer__bubble';
+    var name = doc.createElement('div');
+    name.className = 'ac-dealer__name';
+    name.textContent = 'The Dealer';
+    textEl = doc.createElement('div');
+    textEl.className = 'ac-dealer__text';
+    bubble.appendChild(name);
+    bubble.appendChild(textEl);
+
+    host.appendChild(faceEl);
+    host.appendChild(bubble);
+
+    // Click anywhere on him to finish the line, then to send him away.
+    host.addEventListener('click', function () {
+      if (typing) finishTyping();
+      else hide();
+    });
+
+    doc.body.appendChild(host);
+  }
+
+  /* --------------------------------------------------------------- speaking */
+
+  function finishTyping() {
+    if (!typing) return;
+    clearTimeout(typing.timer);
+    textEl.textContent = typing.full;
+    typing = null;
+    host.classList.remove('is-talking');
+    scheduleHide(4200);
+  }
+
+  function scheduleHide(ms) {
+    clearTimeout(hideTimer);
+    hideTimer = global.setTimeout(hide, ms);
+  }
+
+  function hide() {
+    clearTimeout(hideTimer);
+    if (typing) { clearTimeout(typing.timer); typing = null; }
+    if (!host) return;
+    host.classList.remove('is-talking');
+    host.classList.remove('is-in');
+  }
+
+  /**
+   * Say something.
+   * @param text the line
+   * @param opts.hold how long to linger after the last character
+   */
+  function say(text, opts) {
+    if (!text) return;
+    opts = opts || {};
+    build();
+    clearTimeout(hideTimer);
+    if (typing) clearTimeout(typing.timer);
+
+    host.classList.add('is-in');
+    textEl.textContent = '';
+
+    if (!motionOK()) {
+      textEl.textContent = text;
+      typing = null;
+      scheduleHide(opts.hold || 5200);
+      return;
+    }
+
+    host.classList.add('is-talking');
+    typing = { full: text, i: 0, timer: 0 };
+
+    function step() {
+      if (!typing) return;
+      var ch = text.charAt(typing.i);
+      textEl.textContent = text.slice(0, ++typing.i);
+
+      // Blip on letters only: punctuation and spaces are where a voice rests.
+      if (/[^\s.,!?—…]/.test(ch) && typing.i % 2 === 0) blip(typing.i);
+
+      if (typing.i >= text.length) {
+        typing = null;
+        host.classList.remove('is-talking');
+        scheduleHide(opts.hold || 4600);
+        return;
+      }
+      // A beat after punctuation is most of what makes typed text feel spoken.
+      var delay = /[.!?—…]/.test(ch) ? 260 : /[,;:]/.test(ch) ? 150 : 30;
+      typing.timer = global.setTimeout(step, delay);
+    }
+    typing.timer = global.setTimeout(step, 220);
+  }
+
+  /* ------------------------------------------------------------------ lines
+
+     Dry and short. Typed text wants few words — every extra clause is another
+     second the player is waiting to be allowed to do something.
+
+     Each entry is a list; one is picked at random so he does not repeat
+     himself the second time you see the same screen. */
+  var LINES = {
+    hub_first: ['New face. The tables are open.'],
+    hub: [
+      'Back again.',
+      'The tables kept your seat.',
+      'Pick a game. They all end the same way.',
+      'Something for everyone. Mostly for the house.'
+    ],
+    hub_signed_out: ['Nobody plays anonymously here. Not for long.'],
+
+    progress: [
+      'Everything you have managed to keep.',
+      'The house remembers what you earned. It remembers the rest too.',
+      'Spend it. It does not gather interest.'
+    ],
+    bought: ['Yours. Permanently, which is rarer than it sounds.'],
+    achievement: ['Noted. The house notes everything.'],
+
+    title_pegfall: [
+      'Drop the ball. Gravity does the rest.',
+      'The pegs decide. You only choose where to start.'
+    ],
+    title_onemoreroll: [
+      'Five dice. Fewer choices than you think.',
+      'The dice do not remember the last roll. You will.'
+    ],
+    title_nolimit: [
+      'Place your chips. The wheel is listening.',
+      'No limit. That has never once been good news.'
+    ],
+
+    win: [
+      'You took it off the house. That happens.',
+      'The house folds. Enjoy it — the house has other rooms.'
+    ],
+    deep: [
+      'Further than most. Not far enough.',
+      'You lasted. The table is still here.'
+    ],
+    early: [
+      'Short one.',
+      'The house keeps the difference.',
+      'Again, then.'
+    ]
+  };
+
+  function pick(key) {
+    var set = LINES[key];
+    if (!set || !set.length) return null;
+    return set[Math.floor(Math.random() * set.length)];
+  }
+
+  /** Say a line from a named set. Silently does nothing if the set is empty. */
+  function says(key, opts) {
+    var line = pick(key);
+    if (line) say(line, opts);
+  }
+
+  /**
+   * React to a finished run. `summary` is the same shape the progression store
+   * takes, so a caller never has to build a second one.
+   */
+  function reactToRun(summary) {
+    summary = summary || {};
+    if (summary.won) return says('win');
+    var deep = (summary.ante || 0) >= 4 || (summary.floor || 0) >= 5;
+    says(deep ? 'deep' : 'early');
+  }
+
+  /** Greet on a game's title screen. */
+  function greet(gameId) {
+    says('title_' + gameId);
+  }
+
+  Arcade.dealer = {
+    say: say, says: says, pick: pick,
+    greet: greet, reactToRun: reactToRun,
+    hide: hide, LINES: LINES
+  };
+})(typeof window !== 'undefined' ? window : this);
+</script>
+<script>
 // ===== shared/js/arcade-ui.js
 /* ============================================================================
    arcade-ui.js — the shared chrome: arcade bar, auth dialog, leaderboard,
@@ -3750,6 +4123,7 @@ body.cb .pocket-pick.black::after {
     t.appendChild(body);
     toastHost().appendChild(t);
     play('achievement');
+    if (Arcade.dealer) Arcade.dealer.says('achievement');
     global.setTimeout(function () {
       t.classList.add('is-out');
       global.setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 260);
@@ -3815,6 +4189,7 @@ body.cb .pocket-pick.black::after {
           else drawClears(host, id);
         }
         draw();
+        if (Arcade.dealer) Arcade.dealer.says('progress');
       },
       foot: function (foot, api) { foot.appendChild(btn('Close', '', api.close)); }
     });
@@ -3861,6 +4236,7 @@ body.cb .pocket-pick.black::after {
             countUp(purseAmount, had, Arcade.progress.balance(gameId), 500);
             flash(purseAmount, 'gold');
             toast('Unlocked ' + u.label, 'gold');
+            if (Arcade.dealer) Arcade.dealer.says('bought');
             // Redraw once the flourish has played, so the other rows catch up
             // on affordability without snatching this one away mid-animation.
             global.setTimeout(redraw, 820);
@@ -7914,6 +8290,12 @@ function tip(el, data) {
 
 function hideTip() { const t = $('tooltip'); if (t) t.hidden = true; }
 
+/** The dealer, if the arcade layer is present. */
+function dealer() {
+  const a = typeof globalThis !== 'undefined' ? globalThis.Arcade : null;
+  return a && a.dealer ? a.dealer : null;
+}
+
 /** The shared arcade buttons, for this game's own title and end screens. */
 function arcadeRow() {
   const arcade = typeof globalThis !== 'undefined' ? globalThis.Arcade : null;
@@ -8151,6 +8533,8 @@ let titleWheel = 'house';
 let titleStake = 'white';
 
 function titleScreen() {
+  const d = dealer();
+  if (d) d.greet('nolimit');
   const saved = Game.load();
   if (!wheelUnlocked(titleWheel)) titleWheel = 'house';
   if (!stakeUnlocked(titleStake)) titleStake = 'white';
@@ -8746,6 +9130,8 @@ function unlockNotes() {
 }
 
 function gameOverScreen() {
+  const d = dealer();
+  if (d) d.reactToRun({ ante: G.ante, score: G.stats.best, won: false });
   const rd = G.round;
   return h('div.centered', null,
     h('h1.bigtitle.lose', null, 'Wiped out'),
@@ -8762,6 +9148,8 @@ function gameOverScreen() {
 }
 
 function winScreen() {
+  const d = dealer();
+  if (d) d.reactToRun({ ante: G.ante, score: G.stats.best, won: true });
   return h('div.centered', null,
     h('h1.bigtitle', null, 'The house folds'),
     h('div.subtitle', null, `Ante ${FINAL_ANTE} cleared · ${STAKES_BY_ID[G.stakeId].name}`),
