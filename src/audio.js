@@ -67,6 +67,38 @@ export function initAudio() {
 export function resumeAudio() {
   initAudio();
   if (auCtx && auCtx.state === 'suspended') auCtx.resume().catch(() => {});
+  syncMusic();
+}
+
+// ---------------------------------------------------------------------------
+// music
+// ---------------------------------------------------------------------------
+// The arcade's soundtrack — One More Roll's score, from the shared layer
+// (shared/js/arcade-music.js) — on this context, into the master so the
+// limiter catches it too. The UI picks the mode from the screen; this decides
+// whether it is heard. Settings.soundtrack is its own switch: "Sound effects"
+// off leaves the music playing, as the label says.
+//
+// MUSIC_SHARE sits it under the effects the way One More Roll does: its music
+// is about 0.45 of its effects by default.
+const MUSIC_SHARE = 0.45;
+let auScore = null;
+let auWantMusic = null;
+
+export function syncMusic() {
+  const arcade = typeof globalThis !== 'undefined' ? globalThis.Arcade : null;
+  if (!auCtx || auBroken || !(arcade && arcade.music)) return;
+  if (!auScore) auScore = arcade.music.player(auCtx, auMaster);
+  const audible = Settings.soundtrack && Settings.volume > 0;
+  auScore.level(audible ? Settings.volume * MUSIC_SHARE : 0);
+  auScore.mode(audible ? auWantMusic : null);
+}
+
+/** 'menu' | 'play' | 'shop' | 'boss' | null. Cheap to call on every render. */
+export function playMusic(mode) {
+  if (mode === auWantMusic) return;
+  auWantMusic = mode;
+  syncMusic();
 }
 
 const auOn = () => auCtx && !auBroken && Settings.sfx && Settings.volume > 0;
@@ -237,4 +269,5 @@ export const Sfx = {
 };
 
 /** Diagnostics, used by the test page and worth keeping honest. */
-export const audioStats = () => ({ voices: auVoices, peakMax: MAX_VOICES, dropped: auDropped, state: auCtx && auCtx.state });
+export const audioStats = () => ({ voices: auVoices, peakMax: MAX_VOICES, dropped: auDropped, state: auCtx && auCtx.state,
+  music: auScore ? auScore.current : null });

@@ -109,9 +109,10 @@ These are the remaining distance to Balatro, and none of them is a coding proble
 - **Original art direction.** CSS and SVG have taken this as far as taste allows.
   Real pixel art, card frames and animation need an artist. This is the single
   most visible remaining gap.
-- **Original soundtrack.** Synthesised SFX land; synthesised *music* would be
-  worse than silence. Needs a composer. The audio bus already has a music
-  channel and a mute toggle wired for it.
+- **Original soundtrack.** No Limit now plays the arcade's shared music — One
+  More Roll's synthesised loops (`shared/js/arcade-music.js`), switched by
+  screen, with its own Music toggle. A score written for this table would
+  still need a composer.
 - **Tuning at scale.** The bot in `test/` plays a fixed strategy. Real balance
   comes from telemetry across thousands of human runs — which token is bought,
   which is never bought, which boss ends runs. Instrument, then tune.

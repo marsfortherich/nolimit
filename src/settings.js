@@ -6,7 +6,10 @@ const SETTINGS_KEY = 'no-limit-settings-v1';
 const DEFAULTS = {
   volume: 0.6,
   sfx: true,
-  music: false,       // reserved: there is no soundtrack yet, see ROADMAP P5
+  // The arcade's soundtrack (One More Roll's). A new key rather than the old
+  // reserved `music`: that one was saved as false by every player who touched
+  // a setting before there was any music, and would have kept it off for them.
+  soundtrack: true,
   speed: 1,           // 0.5 = languid, 1 = normal, 2 = brisk, 4 = instant
   reducedMotion: false,
   shake: true,

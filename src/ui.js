@@ -14,7 +14,7 @@ import { tagDef } from './tags.js';
 import { PACKS_BY_ID, FATES_BY_ID } from './packs.js';
 import { Profile, loadProfile, stakeUnlocked, wheelUnlocked, dailySeed, resetProfile } from './profile.js';
 import { Settings, loadSettings, setSetting } from './settings.js';
-import { Sfx, resumeAudio, resetPitch, audioStats } from './audio.js';
+import { Sfx, resumeAudio, resetPitch, audioStats, playMusic, syncMusic } from './audio.js';
 import { fxFloat, fxFlash, fxShake, fxCountUp, fxPop, fxBurst, fxWait, fxClear } from './fx.js';
 import {
   mountWheel, wheelSpinTo, wheelHopTo, wheelFinishNow, wheelArm, wheelDisarm,
@@ -150,7 +150,18 @@ function bindGame(game) {
 // top level
 // ---------------------------------------------------------------------------
 
+/* Which of the arcade's loops a screen plays, the way One More Roll picks:
+   the menu at the title and between tables, play at a table (boss at a boss
+   table), the shop's own loop in the shop and its packs. */
+function musicFor() {
+  if (!G) return 'menu';
+  if (G.screen === 'play') return G.round && G.round.bossId ? 'boss' : 'play';
+  if (G.screen === 'shop' || G.screen === 'pack') return 'shop';
+  return 'menu';
+}
+
 export function render() {
+  playMusic(musicFor());
   const side = $('sidebar'), centre = $('centre');
   const tokenbar = $('tokenbar'), actionbar = $('actionbar');
 
@@ -1077,6 +1088,7 @@ function showSettings() {
     const b = h('button.btn.sm' + (Settings[key] ? '.green' : ''), null, Settings[key] ? 'On' : 'Off');
     b.addEventListener('click', () => {
       setSetting(key, !Settings[key]);
+      syncMusic();
       Sfx.ui();
       b.className = 'btn sm' + (Settings[key] ? ' green' : '');
       b.textContent = Settings[key] ? 'On' : 'Off';
@@ -1090,7 +1102,7 @@ function showSettings() {
   };
 
   const vol = h('input', { type: 'range', min: '0', max: '1', step: '.05', value: String(Settings.volume) });
-  vol.addEventListener('input', () => setSetting('volume', Number(vol.value)));
+  vol.addEventListener('input', () => { setSetting('volume', Number(vol.value)); syncMusic(); });
   vol.addEventListener('change', () => { resumeAudio(); Sfx.coin(); });
 
   const speed = h('select.sel');
@@ -1104,12 +1116,13 @@ function showSettings() {
   openModal(modalBox('Settings',
     row('Volume', vol),
     row('Sound effects', toggle('sfx')),
+    row('Music', toggle('soundtrack')),
     row('Animation speed', speed),
     row('Screen shake', toggle('shake')),
     row('Reduced motion', toggle('reducedMotion')),
     row('Colourblind palette', toggle('colourblind')),
     h('div.modalsub', { style: { marginTop: '14px' } },
-      'Every sound is synthesised at runtime — there are no audio files. A soundtrack is still on the roadmap.'),
+      "Every sound is synthesised at runtime — there are no audio files. The music is One More Roll's, shared across the arcade."),
     // Kept visually distinct and out of .modalfoot: it must never be mistaken
     // for the Close button sitting directly below it.
     h('div.dangerzone', null,
