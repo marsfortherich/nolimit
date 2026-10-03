@@ -8,8 +8,8 @@
 <meta name="description" content="A roulette roguelike. Place your chips, spin, and build a machine out of Tokens while carving up the wheel itself." />
 <meta name="theme-color" content="#0d3b2a" />
 <meta name="color-scheme" content="dark" />
-<meta name="app-version" content="1.0.2" />
-<meta name="app-assets" content="3f6446437225afc2">
+<meta name="app-version" content="1.0.3" />
+<meta name="app-assets" content="a478289baf747e66">
 <meta property="og:type" content="website" />
 <meta property="og:title" content="No Limit — a roulette roguelike" />
 <meta property="og:description" content="Place your chips, spin, and beat the table. Build a machine out of Tokens, carve up the wheel itself, and take eight antes off the house." />
@@ -563,6 +563,15 @@ html[data-arcade-game="hub"] {
   padding: var(--ac-s3) var(--ac-s5) var(--ac-s5);
   display: flex; gap: var(--ac-s2); justify-content: center; flex-wrap: wrap;
 }
+
+/* Arcade.ui.confirm: the question, then the foot's Cancel / OK */
+.ac-confirm__text {
+  margin: 0;
+  text-align: center;
+  line-height: 1.5;
+  color: var(--ac-ink-dim);
+}
+.ac-confirm__foot .ac-btn { min-width: 110px; }
 
 /* tabs */
 .ac-tabs {
@@ -3821,15 +3830,26 @@ body.cb .pocket-pick.black::after {
   /* ---------------------------------------------------------------- modal */
 
   var openModalEl = null;
+  var openModalOnClose = null;
+
+  /* Tell the open modal it is going, whichever way it goes: ×, Escape, the
+     backdrop, its own buttons, or another modal replacing it. */
+  function modalGone() {
+    var fn = openModalOnClose;
+    openModalOnClose = null;
+    if (fn) fn();
+  }
 
   function removeModalNow() {
     if (openModalEl && openModalEl.parentNode) openModalEl.parentNode.removeChild(openModalEl);
     openModalEl = null;
+    modalGone();
   }
 
   /** Dismiss with a fade. Replacing one modal with another skips it. */
   function closeModal() {
     if (!openModalEl) return;
+    modalGone();
     if (!motionOK()) { removeModalNow(); return; }
     var going = openModalEl;
     openModalEl = null;
@@ -3840,8 +3860,9 @@ body.cb .pocket-pick.black::after {
   }
 
   /**
-   * @param opts { title, sub, wide, body(bodyEl, api), foot(footEl, api) }
-   * The api handed to the builders is { close, setBody, box }.
+   * @param opts { title, sub, wide, body(bodyEl, api), foot(footEl, api), onClose() }
+   * The api handed to the builders is { close, setBody, box }. onClose runs
+   * once, however the modal is dismissed.
    */
   function modal(opts) {
     removeModalNow();
@@ -3890,7 +3911,51 @@ body.cb .pocket-pick.black::after {
     wrap.appendChild(box);
     doc.body.appendChild(wrap);
     openModalEl = wrap;
+    openModalOnClose = opts.onClose || null;
     return api;
+  }
+
+  /**
+   * A yes/no question in the arcade's own modal.
+   *
+   * The games used the browser's confirm(), which ignores their look entirely
+   * — and in the Steam build is a bare Windows dialog over a fullscreen game.
+   * Resolves true only for the confirm button; Cancel, ×, Escape and the
+   * backdrop all resolve false. The caller must re-check its state after the
+   * answer: the question is no longer modal to the game, so the thing asked
+   * about can change while it is open.
+   *
+   * @param opts { title, text, ok, cancel, danger } — or just the text
+   * @returns Promise<boolean>
+   */
+  function confirmBox(opts) {
+    opts = typeof opts === 'string' ? { text: opts } : (opts || {});
+    return new Promise(function (resolve) {
+      var answered = false;
+      function answer(v) {
+        if (answered) return;
+        answered = true;
+        resolve(v);
+      }
+      modal({
+        title: opts.title || 'Are you sure?',
+        onClose: function () { answer(false); },
+        body: function (body) {
+          if (opts.text) body.appendChild(el('p', 'ac-confirm__text', opts.text));
+        },
+        foot: function (foot, api) {
+          var yes = btn(opts.ok || 'OK', opts.danger ? 'ac-btn--danger' : 'ac-btn--primary', function () {
+            answer(true);
+            api.close();
+          });
+          foot.classList.add('ac-confirm__foot');
+          foot.appendChild(btn(opts.cancel || 'Cancel', 'ac-btn--ghost', function () { api.close(); }));
+          foot.appendChild(yes);
+          // Enter confirms, as it did with the browser's dialog
+          global.setTimeout(function () { try { yes.focus(); } catch (e) { /* detached */ } }, 0);
+        }
+      });
+    });
   }
 
   doc.addEventListener('keydown', function (e) {
@@ -4786,6 +4851,7 @@ body.cb .pocket-pick.black::after {
     showLeaderboard: showLeaderboard,
     showOffline: showOffline,
     inlineActions: inlineActions,
+    confirm: confirmBox,
     toast: toast,
     modal: modal,
     closeModal: closeModal,
@@ -8556,6 +8622,13 @@ function arcadeRow() {
   return arcade && arcade.ui ? arcade.ui.inlineActions({ gameId: 'nolimit' }) : null;
 }
 
+/** A yes/no in the arcade's own dialog; the browser's only without the arcade layer. */
+function askYesNo(opts) {
+  const arcade = typeof globalThis !== 'undefined' ? globalThis.Arcade : null;
+  return arcade && arcade.ui && arcade.ui.confirm ? arcade.ui.confirm(opts)
+    : Promise.resolve(confirm(opts.text));
+}
+
 // ---------------------------------------------------------------------------
 // module state
 // ---------------------------------------------------------------------------
@@ -8704,7 +8777,11 @@ function sidebar() {
     h('span', { tip: { title: WHEELS_BY_ID[G.wheelId].name, body: WHEELS_BY_ID[G.wheelId].text } }, WHEELS_BY_ID[G.wheelId].name)));
   out.push(h('div.seed', { tip: { title: 'Seed', body: 'Runs are deterministic. Start a new run with this seed to replay it exactly.' } }, 'SEED ' + G.seed));
   out.push(h('button.btn.sm', {
-    onclick: () => { if (confirm('Abandon this run? Unlocks you have already earned are kept.')) { Game.clearSave(); bindGame(null); } }
+    onclick: async () => {
+      const run = G;
+      const yes = await askYesNo({ title: 'Abandon run', text: 'Abandon this run? Unlocks you have already earned are kept.', ok: 'Abandon', danger: true });
+      if (yes && G === run) { Game.clearSave(); bindGame(null); }
+    }
   }, 'Abandon run'));
   return out;
 }
@@ -8745,10 +8822,13 @@ function tokenBar() {
       ondragstart: (e) => { e.dataTransfer.setData('text/plain', String(i)); hideTip(); },
       ondragover: (e) => e.preventDefault(),
       ondrop: (e) => { e.preventDefault(); Sfx.chip(); G.moveToken(Number(e.dataTransfer.getData('text/plain')), i); },
-      oncontextmenu: (e) => {
+      oncontextmenu: async (e) => {
         e.preventDefault();
         if (G.tokens[i] !== tk || !G.canSellToken(i)) { Sfx.deny(); return; }
-        if (confirm(`Sell ${d.name} for $${tk.sellValue}?`)) { Sfx.coin(); G.sellToken(i); }
+        const yes = await askYesNo({ title: 'Sell Token', text: `Sell ${d.name} for $${tk.sellValue}?`, ok: `Sell · $${tk.sellValue}` });
+        // the bar may have changed while the question was open: find it again
+        const now = G.tokens.indexOf(tk);
+        if (yes && now >= 0 && G.canSellToken(now)) { Sfx.coin(); G.sellToken(now); }
       }
     },
       h('div.cname', null, d.name),
@@ -8772,9 +8852,12 @@ function omenCard(om, i) {
   return h('div.card.small.omen' + (usable ? '' : '.disabled'), {
     tip: { title: d.name, body: d.text, foot: usable ? 'Click to use · right-click to sell' : 'Cannot be used right now' },
     onclick: () => { if (usable) { Sfx.ui(); beginOmen(i); } else Sfx.deny(); },
-    oncontextmenu: (e) => {
+    oncontextmenu: async (e) => {
       e.preventDefault();
-      if (G.omens[i] === om && confirm(`Sell ${d.name}?`)) { Sfx.coin(); G.sellOmen(i); }
+      if (G.omens[i] !== om) return;
+      const yes = await askYesNo({ title: 'Sell Omen', text: `Sell ${d.name}?`, ok: 'Sell' });
+      const now = G.omens.indexOf(om);
+      if (yes && now >= 0) { Sfx.coin(); G.sellOmen(now); }
     }
   }, h('div.cglyph', null, d.glyph), h('div.cname', null, d.name));
 }
@@ -9553,9 +9636,9 @@ function showSettings() {
     h('div.dangerzone', null,
       h('span', null, 'Erase every unlock, record and setting'),
       h('button.btn.sm.danger', {
-        onclick: () => {
-          if (!confirm('Erase ALL unlocks, records and settings? This cannot be undone.')) return;
-          if (!confirm('Really erase everything? Your unlocked wheels and stakes will be gone.')) return;
+        onclick: async () => {
+          if (!await askYesNo({ title: 'Erase everything', text: 'Erase ALL unlocks, records and settings? This cannot be undone.', ok: 'Erase', danger: true })) return;
+          if (!await askYesNo({ title: 'Really erase?', text: 'Really erase everything? Your unlocked wheels and stakes will be gone.', ok: 'Erase everything', danger: true })) return;
           resetProfile();
           closeModal();
           render();

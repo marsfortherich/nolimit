@@ -101,6 +101,13 @@ function arcadeRow() {
   return arcade && arcade.ui ? arcade.ui.inlineActions({ gameId: 'nolimit' }) : null;
 }
 
+/** A yes/no in the arcade's own dialog; the browser's only without the arcade layer. */
+function askYesNo(opts) {
+  const arcade = typeof globalThis !== 'undefined' ? globalThis.Arcade : null;
+  return arcade && arcade.ui && arcade.ui.confirm ? arcade.ui.confirm(opts)
+    : Promise.resolve(confirm(opts.text));
+}
+
 // ---------------------------------------------------------------------------
 // module state
 // ---------------------------------------------------------------------------
@@ -249,7 +256,11 @@ function sidebar() {
     h('span', { tip: { title: WHEELS_BY_ID[G.wheelId].name, body: WHEELS_BY_ID[G.wheelId].text } }, WHEELS_BY_ID[G.wheelId].name)));
   out.push(h('div.seed', { tip: { title: 'Seed', body: 'Runs are deterministic. Start a new run with this seed to replay it exactly.' } }, 'SEED ' + G.seed));
   out.push(h('button.btn.sm', {
-    onclick: () => { if (confirm('Abandon this run? Unlocks you have already earned are kept.')) { Game.clearSave(); bindGame(null); } }
+    onclick: async () => {
+      const run = G;
+      const yes = await askYesNo({ title: 'Abandon run', text: 'Abandon this run? Unlocks you have already earned are kept.', ok: 'Abandon', danger: true });
+      if (yes && G === run) { Game.clearSave(); bindGame(null); }
+    }
   }, 'Abandon run'));
   return out;
 }
@@ -290,10 +301,13 @@ function tokenBar() {
       ondragstart: (e) => { e.dataTransfer.setData('text/plain', String(i)); hideTip(); },
       ondragover: (e) => e.preventDefault(),
       ondrop: (e) => { e.preventDefault(); Sfx.chip(); G.moveToken(Number(e.dataTransfer.getData('text/plain')), i); },
-      oncontextmenu: (e) => {
+      oncontextmenu: async (e) => {
         e.preventDefault();
         if (G.tokens[i] !== tk || !G.canSellToken(i)) { Sfx.deny(); return; }
-        if (confirm(`Sell ${d.name} for $${tk.sellValue}?`)) { Sfx.coin(); G.sellToken(i); }
+        const yes = await askYesNo({ title: 'Sell Token', text: `Sell ${d.name} for $${tk.sellValue}?`, ok: `Sell · $${tk.sellValue}` });
+        // the bar may have changed while the question was open: find it again
+        const now = G.tokens.indexOf(tk);
+        if (yes && now >= 0 && G.canSellToken(now)) { Sfx.coin(); G.sellToken(now); }
       }
     },
       h('div.cname', null, d.name),
@@ -317,9 +331,12 @@ function omenCard(om, i) {
   return h('div.card.small.omen' + (usable ? '' : '.disabled'), {
     tip: { title: d.name, body: d.text, foot: usable ? 'Click to use · right-click to sell' : 'Cannot be used right now' },
     onclick: () => { if (usable) { Sfx.ui(); beginOmen(i); } else Sfx.deny(); },
-    oncontextmenu: (e) => {
+    oncontextmenu: async (e) => {
       e.preventDefault();
-      if (G.omens[i] === om && confirm(`Sell ${d.name}?`)) { Sfx.coin(); G.sellOmen(i); }
+      if (G.omens[i] !== om) return;
+      const yes = await askYesNo({ title: 'Sell Omen', text: `Sell ${d.name}?`, ok: 'Sell' });
+      const now = G.omens.indexOf(om);
+      if (yes && now >= 0) { Sfx.coin(); G.sellOmen(now); }
     }
   }, h('div.cglyph', null, d.glyph), h('div.cname', null, d.name));
 }
@@ -1098,9 +1115,9 @@ function showSettings() {
     h('div.dangerzone', null,
       h('span', null, 'Erase every unlock, record and setting'),
       h('button.btn.sm.danger', {
-        onclick: () => {
-          if (!confirm('Erase ALL unlocks, records and settings? This cannot be undone.')) return;
-          if (!confirm('Really erase everything? Your unlocked wheels and stakes will be gone.')) return;
+        onclick: async () => {
+          if (!await askYesNo({ title: 'Erase everything', text: 'Erase ALL unlocks, records and settings? This cannot be undone.', ok: 'Erase', danger: true })) return;
+          if (!await askYesNo({ title: 'Really erase?', text: 'Really erase everything? Your unlocked wheels and stakes will be gone.', ok: 'Erase everything', danger: true })) return;
           resetProfile();
           closeModal();
           render();
