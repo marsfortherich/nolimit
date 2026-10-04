@@ -93,6 +93,31 @@ spot('black', 'BLACK', blacks, 22, 1, 'even');
 spot('odd',   'ODD',   odds,   22, 1, 'even');
 spot('high',  '19-36', highs,  22, 1, 'even');
 
+/* RED and BLACK are bets on a colour, not on a list of numbers. Recolour and
+   Sigil repaint pockets, and the table and the wheel show the new colour — so
+   a pocket the player has made black pays BLACK. They used to settle by the
+   number's printed colour, which paid RED on a pocket showing black. Every
+   other bet is a bet on numbers and still settles by number. */
+const COLOUR_BETS = new Set(['red', 'black']);
+
+/** Does this bet win when the ball lands in this pocket? */
+export function spotCovers(spot, pocket) {
+  if (COLOUR_BETS.has(spot.id)) return pocket.colour === spot.id;
+  return spot.numbers.includes(pocket.n);
+}
+
+/** The numbers a bet stands on with the wheel as it is now. A number that is
+    no longer on the wheel keeps its printed colour, as before. */
+export function spotNumbers(spot, wheel) {
+  if (!COLOUR_BETS.has(spot.id)) return spot.numbers;
+  const out = [];
+  for (let n = 0; n <= 36; n++) {
+    const pockets = wheel.filter((p) => p.n === n);
+    if (pockets.length ? pockets.some((p) => p.colour === spot.id) : colourOf(n) === spot.id) out.push(n);
+  }
+  return out;
+}
+
 export const OUTSIDE_FAMILIES = new Set(['dozen', 'column', 'even']);
 
 export function isOutside(spotDef) { return OUTSIDE_FAMILIES.has(spotDef.family); }

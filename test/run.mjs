@@ -146,7 +146,9 @@ test('scorer matches a brute-force winner/total calculation', () => {
     G.round.rolls = Array(10).fill(0.9);   // suppress Lucky/Glass rolls
     const ctx = computeSpin(G, G.rng.int(G.wheel.length));
 
-    const expect = Object.keys(bets).filter((id) => SPOTS[id].numbers.includes(ctx.result)).sort();
+    // RED / BLACK settle on the pocket's colour; everything else on its number
+    const expect = Object.keys(bets).filter((id) => (id === 'red' || id === 'black')
+      ? ctx.pocket.colour === id : SPOTS[id].numbers.includes(ctx.result)).sort();
     const got = ctx.winners.map((w) => w.spotId).sort();
     assert(JSON.stringify(expect) === JSON.stringify(got),
       `winners differ on ${ctx.result}: ${expect} vs ${got}`);
@@ -157,6 +159,37 @@ test('scorer matches a brute-force winner/total calculation', () => {
     eq(ctx.mult, mult, 'mult');
     eq(ctx.score, Math.floor(chips * mult), 'score');
   }
+});
+
+/* Recolour and Sigil repaint pockets, and the table shows the new colour. A
+   colour bet has to follow it: RED once paid on a pocket the player had made
+   black, and BLACK did not. */
+test('RED and BLACK pay on the colour a pocket has been painted', () => {
+  const G = startedRun('PAINT');
+  const winnersAt = (index) => {
+    primeSpin(G, { red: 1, black: 1, n32: 1 });
+    G.round.rolls = Array(10).fill(0.9);
+    return computeSpin(G, index).winners.map((w) => w.spotId).sort();
+  };
+
+  // Recolour, the Omen, on 32 (printed red)
+  const i32 = G.wheel.findIndex((p) => p.n === 32);
+  OMENS.find((o) => o.id === 'recolour').use(G, G.wheel[i32]);
+  eq(G.wheel[i32].colour, 'black', 'Recolour turned 32 black');
+  eq(JSON.stringify(winnersAt(i32)), JSON.stringify(['black', 'n32']), 'a black 32 pays BLACK and its number, not RED');
+
+  // Sigil, the Fate: every non-zero pocket one colour. Force the colour it picks.
+  const rng = G.rng;
+  G.rng = Object.assign(() => 0.1, rng);           // < 0.5: red
+  FATES.find((f) => f.id === 'sigil').use(G);
+  G.rng = rng;
+  const i2 = G.wheel.findIndex((p) => p.n === 2);   // printed black
+  eq(G.wheel[i2].colour, 'red', 'Sigil turned 2 red');
+  eq(JSON.stringify(winnersAt(i2)), JSON.stringify(['red']), 'after Sigil, 2 pays RED, not BLACK');
+
+  // 0 stays green under Sigil and pays neither colour
+  const i0 = G.wheel.findIndex((p) => p.n === 0);
+  eq(JSON.stringify(winnersAt(i0)), JSON.stringify([]), '0 pays no colour');
 });
 
 test('a spin with no winning bet scores exactly zero', () => {

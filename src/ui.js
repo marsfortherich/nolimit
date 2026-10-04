@@ -1,7 +1,7 @@
 // All rendering. The engine never touches the DOM; this module only mutates
 // game state through Game methods.
 
-import { SPOTS, ENHANCEMENTS, BLINDS, colourOf } from './data.js';
+import { SPOTS, ENHANCEMENTS, BLINDS, colourOf, spotCovers, spotNumbers } from './data.js';
 import { Game, fmt, FINAL_ANTE, FULL_WHEEL } from './engine.js';
 import { TOKENS, TOKENS_BY_ID, RARITY, tokenDef, tokenText } from './tokens.js';
 import { OMENS_BY_ID, omenDef } from './omens.js';
@@ -571,8 +571,10 @@ function betCell(spotId, style, extra = '') {
   const wager = rd.bets[spotId] || 0;
   const locked = rd.locked.includes(spotId);
   const outside = spot.family !== 'straight';
-  const hit = resultVisible() && spot.numbers.includes(rd.preview.result);
-  const onWheel = G.wheel.filter((p) => spot.numbers.includes(p.n)).length;
+  const hit = resultVisible() && spotCovers(spot, rd.preview.pocket);
+  // what the bet stands on now: RED and BLACK follow repainted pockets
+  const onWheel = G.wheel.filter((p) => spotCovers(spot, p)).length;
+  const numbers = spotNumbers(spot, G.wheel).length;
 
   const cls = ['bet', extra.trim(), outside ? 'outside' : '', locked ? 'locked' : '', hit ? 'hit' : '']
     .filter(Boolean).join('.');
@@ -584,7 +586,7 @@ function betCell(spotId, style, extra = '') {
     oncontextmenu: (e) => { e.preventDefault(); if (G.removeChip(spotId)) Sfx.unchip(); },
     tip: {
       title: spot.family === 'straight' ? `Straight up — ${spot.label}` : spot.label,
-      sub: `${spot.numbers.length} number${spot.numbers.length === 1 ? '' : 's'} · ${spot.family} · ${((onWheel / G.wheel.length) * 100).toFixed(1)}% of the wheel`,
+      sub: `${numbers} number${numbers === 1 ? '' : 's'} ·${spot.family} · ${((onWheel / G.wheel.length) * 100).toFixed(1)}% of the wheel`,
       body: `${fmt(spot.chips)} Chips per chip wagered, +${spot.mult} Mult`,
       foot: locked ? 'Locked by The Serpent' : null
     }

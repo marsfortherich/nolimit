@@ -8,8 +8,8 @@
 <meta name="description" content="A roulette roguelike. Place your chips, spin, and build a machine out of Tokens while carving up the wheel itself." />
 <meta name="theme-color" content="#0d3b2a" />
 <meta name="color-scheme" content="dark" />
-<meta name="app-version" content="1.0.4" />
-<meta name="app-assets" content="0bf7d85d1c132eb3">
+<meta name="app-version" content="1.0.5" />
+<meta name="app-assets" content="6a4bcc3f16f0ff60">
 <meta property="og:type" content="website" />
 <meta property="og:title" content="No Limit — a roulette roguelike" />
 <meta property="og:description" content="Place your chips, spin, and beat the table. Build a machine out of Tokens, carve up the wheel itself, and take eight antes off the house." />
@@ -5686,6 +5686,31 @@ spot('black', 'BLACK', blacks, 22, 1, 'even');
 spot('odd',   'ODD',   odds,   22, 1, 'even');
 spot('high',  '19-36', highs,  22, 1, 'even');
 
+/* RED and BLACK are bets on a colour, not on a list of numbers. Recolour and
+   Sigil repaint pockets, and the table and the wheel show the new colour — so
+   a pocket the player has made black pays BLACK. They used to settle by the
+   number's printed colour, which paid RED on a pocket showing black. Every
+   other bet is a bet on numbers and still settles by number. */
+const COLOUR_BETS = new Set(['red', 'black']);
+
+/** Does this bet win when the ball lands in this pocket? */
+function spotCovers(spot, pocket) {
+  if (COLOUR_BETS.has(spot.id)) return pocket.colour === spot.id;
+  return spot.numbers.includes(pocket.n);
+}
+
+/** The numbers a bet stands on with the wheel as it is now. A number that is
+    no longer on the wheel keeps its printed colour, as before. */
+function spotNumbers(spot, wheel) {
+  if (!COLOUR_BETS.has(spot.id)) return spot.numbers;
+  const out = [];
+  for (let n = 0; n <= 36; n++) {
+    const pockets = wheel.filter((p) => p.n === n);
+    if (pockets.length ? pockets.some((p) => p.colour === spot.id) : colourOf(n) === spot.id) out.push(n);
+  }
+  return out;
+}
+
 const OUTSIDE_FAMILIES = new Set(['dozen', 'column', 'even']);
 
 function isOutside(spotDef) { return OUTSIDE_FAMILIES.has(spotDef.family); }
@@ -7677,7 +7702,7 @@ class Ctx {
     this.curTarget = null;
 
     const covered = new Set();
-    for (const b of this.bets) for (const n of b.spot.numbers) covered.add(n);
+    for (const b of this.bets) for (const n of spotNumbers(b.spot, G.wheel)) covered.add(n);
     this.numbersCovered = covered.size;
   }
 
@@ -8646,17 +8671,19 @@ function computeSpin(G, pocketIndex) {
   }
 
   // --- which bets won? ---
-  const hitNumbers = new Map([[ctx.result, 1]]);
+  // By pocket, not by number: RED and BLACK settle on the colour the pocket
+  // is now (spotCovers), which Recolour and Sigil change.
+  const hitPockets = [[ctx.pocket, 1]];
   if (ctx.neighbours) {
     const n = G.wheel.length;
     for (const off of [-1, 1]) {
       const p = G.wheel[(pocketIndex + off + n) % n];
-      if (!hitNumbers.has(p.n)) hitNumbers.set(p.n, 0.5);
+      if (p.n !== ctx.result) hitPockets.push([p, 0.5]);
     }
   }
   for (const b of ctx.bets) {
     let best = 0;
-    for (const [num, weight] of hitNumbers) if (b.spot.numbers.includes(num)) best = Math.max(best, weight);
+    for (const [pocket, weight] of hitPockets) if (spotCovers(b.spot, pocket)) best = Math.max(best, weight);
     if (best > 0) ctx.winners.push({ ...b, weight: best, chipsScored: 0 });
   }
 
@@ -9318,8 +9345,10 @@ function betCell(spotId, style, extra = '') {
   const wager = rd.bets[spotId] || 0;
   const locked = rd.locked.includes(spotId);
   const outside = spot.family !== 'straight';
-  const hit = resultVisible() && spot.numbers.includes(rd.preview.result);
-  const onWheel = G.wheel.filter((p) => spot.numbers.includes(p.n)).length;
+  const hit = resultVisible() && spotCovers(spot, rd.preview.pocket);
+  // what the bet stands on now: RED and BLACK follow repainted pockets
+  const onWheel = G.wheel.filter((p) => spotCovers(spot, p)).length;
+  const numbers = spotNumbers(spot, G.wheel).length;
 
   const cls = ['bet', extra.trim(), outside ? 'outside' : '', locked ? 'locked' : '', hit ? 'hit' : '']
     .filter(Boolean).join('.');
@@ -9331,7 +9360,7 @@ function betCell(spotId, style, extra = '') {
     oncontextmenu: (e) => { e.preventDefault(); if (G.removeChip(spotId)) Sfx.unchip(); },
     tip: {
       title: spot.family === 'straight' ? `Straight up — ${spot.label}` : spot.label,
-      sub: `${spot.numbers.length} number${spot.numbers.length === 1 ? '' : 's'} · ${spot.family} · ${((onWheel / G.wheel.length) * 100).toFixed(1)}% of the wheel`,
+      sub: `${numbers} number${numbers === 1 ? '' : 's'} ·${spot.family} · ${((onWheel / G.wheel.length) * 100).toFixed(1)}% of the wheel`,
       body: `${fmt(spot.chips)} Chips per chip wagered, +${spot.mult} Mult`,
       foot: locked ? 'Locked by The Serpent' : null
     }

@@ -5,7 +5,7 @@
 
 import { makeRng, randomSeed } from './rng.js';
 import {
-  SPOTS, freshWheel, makePocket, ENHANCEMENTS, BLINDS, anteTarget
+  SPOTS, freshWheel, makePocket, ENHANCEMENTS, BLINDS, anteTarget, spotCovers, spotNumbers
 } from './data.js';
 import { TOKENS, TOKENS_BY_ID, instantiate, tokenDef } from './tokens.js';
 import { OMENS, OMENS_BY_ID, omenDef, instantiateOmen } from './omens.js';
@@ -82,7 +82,7 @@ class Ctx {
     this.curTarget = null;
 
     const covered = new Set();
-    for (const b of this.bets) for (const n of b.spot.numbers) covered.add(n);
+    for (const b of this.bets) for (const n of spotNumbers(b.spot, G.wheel)) covered.add(n);
     this.numbersCovered = covered.size;
   }
 
@@ -1051,17 +1051,19 @@ export function computeSpin(G, pocketIndex) {
   }
 
   // --- which bets won? ---
-  const hitNumbers = new Map([[ctx.result, 1]]);
+  // By pocket, not by number: RED and BLACK settle on the colour the pocket
+  // is now (spotCovers), which Recolour and Sigil change.
+  const hitPockets = [[ctx.pocket, 1]];
   if (ctx.neighbours) {
     const n = G.wheel.length;
     for (const off of [-1, 1]) {
       const p = G.wheel[(pocketIndex + off + n) % n];
-      if (!hitNumbers.has(p.n)) hitNumbers.set(p.n, 0.5);
+      if (p.n !== ctx.result) hitPockets.push([p, 0.5]);
     }
   }
   for (const b of ctx.bets) {
     let best = 0;
-    for (const [num, weight] of hitNumbers) if (b.spot.numbers.includes(num)) best = Math.max(best, weight);
+    for (const [pocket, weight] of hitPockets) if (spotCovers(b.spot, pocket)) best = Math.max(best, weight);
     if (best > 0) ctx.winners.push({ ...b, weight: best, chipsScored: 0 });
   }
 
