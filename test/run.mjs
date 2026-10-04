@@ -16,6 +16,7 @@ import { STAKES } from '../src/stakes.js';
 import { WHEELS } from '../src/wheels.js';
 import { spinPlan, ballRadius, ballRattle, mod360, WHEEL_GEOM } from '../src/wheelview.js';
 import { triggerFreq } from '../src/audio.js';
+import { Profile } from '../src/profile.js';
 
 let passed = 0;
 const failures = [];
@@ -601,6 +602,55 @@ test('an endless run keeps going past ante 8', () => {
   G.goEndless();
   eq(G.ante, 9, 'endless did not advance the ante');
   assert(G.targetFor(0) > 0, 'ante 9 has no target');
+});
+
+// An endless run finishes twice — at the win, and when endless ends it — and
+// the second pass used to count the run, the win and the arcade payout again.
+test('an endless run is counted once, when it is won', () => {
+  const posted = { runs: [], bests: [], scores: [] };
+  globalThis.Arcade = {
+    progress: {
+      bonus: () => 0,
+      recordRun: (id, s) => posted.runs.push(s),
+      recordBest: (id, s) => posted.bests.push(s)
+    },
+    submitScore: (id, p) => posted.scores.push(p)
+  };
+  try {
+    const before = { ...Profile.totals };
+    const G = Game.newRun('ENDLESS-ONCE');
+    G.ante = 8;
+    G.blindIndex = 2;
+    G.startBlind();
+    G.round.score = G.round.target;
+    G.winRound();
+    G.toShop();
+    G.nextBlind();
+    eq(G.screen, 'win', 'won at ante 8');
+    G.goEndless();
+    G.stats.spins += 5;                 // what the endless antes added
+    G.stats.moneyEarned += 7;
+    G.stats.best = 1e6;
+    G.startBlind();
+    G.loseRound();
+
+    eq(Profile.totals.runs - before.runs, 1, 'one run');
+    eq(Profile.totals.wins - before.wins, 1, 'one win');
+    eq(Profile.totals.spins - before.spins, G.stats.spins, 'spins counted once');
+    eq(Profile.totals.moneyEarned - before.moneyEarned, G.stats.moneyEarned, 'money counted once');
+    const rows = Profile.history.filter((r) => r.seed === 'ENDLESS-ONCE');
+    eq(rows.length, 1, 'one history row');
+    eq(rows[0].ante, 9, 'the row moved on to where endless ended');
+    eq(rows[0].bestScore, 1e6, 'with the endless best');
+
+    eq(posted.runs.length, 1, 'one arcade run, so one payout');
+    eq(posted.bests.length, 1, 'endless raised the best instead');
+    eq(posted.bests[0].score, 1e6, 'the endless best');
+    eq(posted.scores.length, 2, 'both passes post; the server keeps the best');
+    eq(posted.scores[1].meta.won, true, 'an endless run is a won run');
+  } finally {
+    delete globalThis.Arcade;
+  }
 });
 
 // ---------------------------------------------------------------------------

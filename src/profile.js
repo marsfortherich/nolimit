@@ -84,6 +84,30 @@ export function recordRun(summary) {
   saveProfile();
 }
 
+/**
+ * An endless run ending. It was counted once already, when it was won, so this
+ * raises the bests and adds only what the endless antes added — never a second
+ * run, win or history row. `already` is the spins and money the first count
+ * took; without it (an endless run saved before this existed) nothing is added
+ * rather than everything twice.
+ */
+export function extendRun(summary, already) {
+  const t = Profile.totals;
+  const base = already || { spins: summary.spins || 0, money: summary.money || 0 };
+  t.spins += Math.max(0, (summary.spins || 0) - base.spins);
+  t.moneyEarned += Math.max(0, (summary.money || 0) - base.money);
+  t.bestScore = Math.max(t.bestScore, summary.bestScore || 0);
+  t.bestAnte = Math.max(t.bestAnte, summary.ante || 0);
+
+  const row = Profile.history.find((r) => r.seed === summary.seed && r.won);
+  if (row) {
+    row.ante = summary.ante;
+    row.bestScore = Math.max(row.bestScore || 0, summary.bestScore || 0);
+    row.tokens = summary.tokens || [];
+  }
+  saveProfile();
+}
+
 /** A stable seed for the calendar day, so "daily run" means the same to everyone. */
 export function dailySeed(date = new Date()) {
   const y = date.getFullYear();

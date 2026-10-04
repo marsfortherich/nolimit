@@ -16,7 +16,7 @@ import { stakeMods, rollSticker, stakeIndex, nextStake } from './stakes.js';
 import { WHEELS_BY_ID, wheelMods, wheelsEarnedBy } from './wheels.js';
 import { TAGS_BY_ID, rollTag, tagDef } from './tags.js';
 import { PACKS_BY_ID, rollPackType, FATES_BY_ID, FATES } from './packs.js';
-import { Profile, discoverToken, recordRun, unlockStake, unlockWheel } from './profile.js';
+import { Profile, discoverToken, recordRun, extendRun, unlockStake, unlockWheel } from './profile.js';
 
 export const BASE_SPINS = 4;
 export const BASE_CHIPS = 6;
@@ -718,9 +718,15 @@ export class Game {
     if (this.finished) return;
     this.finished = true;
     Game.clearSave();
+    /* An endless run finishes twice: when the final boss falls, and again when
+       the endless antes end it. The first pass counts the run, the win and the
+       arcade payout; the second used to count them all again. Now it only
+       carries the bigger numbers forward, as One More Roll's endless does. An
+       endless run has won, whatever ended it. */
+    const extending = this.endless;
     const summary = {
       seed: this.seed, wheel: this.wheelId, stake: this.stakeId,
-      ante: this.ante, won, spins: this.stats.spins,
+      ante: this.ante, won: !!won || extending, spins: this.stats.spins,
       bestScore: this.stats.best, money: this.stats.moneyEarned,
       tokens: this.tokens.map((t) => t.id)
     };
@@ -732,28 +738,34 @@ export class Game {
       const nxt = nextStake(this.stakeId);
       if (nxt && unlockStake(nxt.id)) this.unlocked.push({ kind: 'stake', id: nxt.id });
     }
-    recordRun(summary);
+    if (extending) extendRun(summary, this.recorded);
+    else recordRun(summary);
+    // What this count took, so an endless pass adds only what came after.
+    this.recorded = { spins: summary.spins, money: summary.money };
 
     // Post the run to the arcade. No Limit is ranked by best single spin, the
     // number the game already treats as its headline score. Fire-and-forget:
     // the engine stays DOM-free and never waits on the network.
     const arcade = typeof globalThis !== 'undefined' ? globalThis.Arcade : null;
     if (arcade) {
-      arcade.progress.recordRun('nolimit', {
+      const forArcade = {
         score: summary.bestScore,
         ante: summary.ante,
         tables: this.stats.roundsWon,
         pocketsRemoved: this.stats.pocketsRemoved,
-        won: !!won,
+        won: summary.won,
         // The stake is this game's difficulty ladder.
         difficulty: this.stakeId
-      });
+      };
+      if (!extending) arcade.progress.recordRun('nolimit', forArcade);
+      else if (typeof arcade.progress.recordBest === 'function') arcade.progress.recordBest('nolimit', forArcade);
+      // Safe to repeat: the server keeps each player's best.
       arcade.submitScore('nolimit', {
         score: summary.bestScore,
         metrics: { ante: summary.ante, tables: this.stats.roundsWon },
         meta: {
           ante: summary.ante,
-          won: !!won,
+          won: summary.won,
           wheel: summary.wheel,
           stake: summary.stake,
           spins: summary.spins,
