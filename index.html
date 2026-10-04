@@ -1042,6 +1042,29 @@ html[data-arcade-game="hub"] {
 @media (prefers-reduced-motion: reduce) {
   .ac-switch-btn__track, .ac-switch-btn__track::after { transition: none; }
 }
+
+/* ------------------------------------------------------------ demo builds
+
+   What a demo holds back stays on screen, greyed out, with this badge — the
+   same pill in all three games, so "Full game" reads as the arcade speaking
+   rather than as each game's own lock. Games append it to the locked choice;
+   it is decoration, so it never takes a click. */
+.ac-fullgame {
+  display: inline-block;
+  padding: 2px 7px;
+  border: 1px solid var(--ac-gold);
+  border-radius: var(--ac-r-pill);
+  background: rgba(0, 0, 0, .45);
+  color: var(--ac-gold);
+  font: 800 var(--ac-fs-micro)/1.4 var(--ac-font-ui);
+  letter-spacing: var(--ac-track-caps);
+  text-transform: uppercase;
+  white-space: nowrap;
+  vertical-align: middle;
+  pointer-events: none;
+}
+/* The way to the full game, beside the arcade's own buttons. */
+.ac-btn--store { text-decoration: none; color: var(--ac-gold); }
 </style>
 <style>
 /* ------------------------------------------------------------------ */
@@ -1857,6 +1880,18 @@ body.cb .pocket-pick.black::after {
 @media (max-width: 640px) {
   .helprule { grid-template-columns: 1fr; gap: 4px; }
 }
+
+/* ---- Demo builds ---------------------------------------------------------
+   A choice the demo holds back (a wheel, a stake, endless) is shown, not
+   hidden: dimmed like a locked one, with the arcade's "Full game" pill at
+   full strength. */
+.pick.held { opacity: 1; }
+.pick.held > :not(.ac-fullgame) { opacity: .4; }
+.pick.held .ac-fullgame { margin-top: 4px; }
+.pickrow > .ac-fullgame { align-self: center; }
+.btn.held:disabled { opacity: 1; }
+.btn.held .held-label { opacity: .45; }
+.btn.held .ac-fullgame { margin-left: 8px; }
 </style>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%230d3b2a' stroke='%23d9b45b' stroke-width='3'/><circle cx='16' cy='7' r='3' fill='%23f4f0e6'/></svg>" />
 </head>
@@ -2099,6 +2134,31 @@ body.cb .pocket-pick.black::after {
        Deployed it is its own site, so Arcade.hubUrl wins and this is unused. */
     hubPath: 'hub/index.html'
   };
+
+  /* --------------------------------------------------------------------
+     4. Demo builds
+
+     A demo is the full game with its choices narrowed: the base run to the
+     win, on the first difficulty, with the starting deck and wheel. Nothing
+     is removed — what the demo holds back stays on screen, greyed out and
+     labelled, so a player can see what the full game adds.
+
+     tools/build-demo.py marks every demo page with
+     <meta name="arcade-demo">. No page in a game's own repo carries it, so a
+     full build can never narrow itself by accident. Games ask isDemo() at the
+     moment they decide something, never at load, which is also what lets a
+     test switch it on.
+     -------------------------------------------------------------------- */
+  Arcade.demo = {
+    active: (function () {
+      try { return !!global.document.querySelector('meta[name="arcade-demo"]'); }
+      catch (e) { return false; }
+    })(),
+    label: 'Full game',
+    note: 'Available in the full game: Dealer’s Choice on Steam.',
+    storeUrl: 'https://store.steampowered.com/app/5377090/'
+  };
+  Arcade.isDemo = function () { return !!(Arcade.demo && Arcade.demo.active); };
 
   Arcade.isConfigured = function () {
     var c = Arcade.firebaseConfig;
@@ -5037,6 +5097,17 @@ body.cb .pocket-pick.black::after {
       row.appendChild(home);
     }
 
+    /* A demo's way to the full game, beside the way home. A link, so the
+       desktop build opens it in the player's browser like any other. */
+    if (Arcade.isDemo && Arcade.isDemo() && Arcade.demo.storeUrl) {
+      var store = el('a', 'ac-btn ac-btn--sm ac-btn--store', 'Full game on Steam');
+      store.href = Arcade.demo.storeUrl;
+      store.target = '_blank';
+      store.rel = 'noopener noreferrer';
+      store.title = Arcade.demo.note;
+      row.appendChild(store);
+    }
+
     row.appendChild(btn(opts.leaderboardLabel || 'Leaderboard', 'ac-btn--sm', function () {
       showLeaderboard(opts.gameId || currentGameId);
     }));
@@ -5067,8 +5138,21 @@ body.cb .pocket-pick.black::after {
     return row;
   }
 
+  /**
+   * The "Full game" pill a demo puts on every choice it holds back — a deck,
+   * a wheel, a difficulty, endless. Each game greys the choice out in its own
+   * look; the pill is the part that reads the same everywhere.
+   */
+  function fullGameBadge() {
+    var d = Arcade.demo || {};
+    var b = el('span', 'ac-fullgame', d.label || 'Full game');
+    if (d.note) b.title = d.note;
+    return b;
+  }
+
   Arcade.ui = {
     mountBar: mountBar,
+    fullGameBadge: fullGameBadge,
     setSound: setSound,
     setSettings: setSettings,
     countUp: countUp,
@@ -7711,6 +7795,16 @@ const FULL_WHEEL = 37;
 
 const SAVE_KEY = 'no-limit-save-v2';
 
+/* A demo build (Arcade.isDemo) plays the base run: the House Wheel at White
+   Stake, to the eighth ante and no further. Its run lives under a key of its
+   own, so a full-game run already in this browser is neither resumed into
+   the demo nor thrown away by it. Asked at each call, never cached. */
+function isDemo() {
+  const a = typeof globalThis !== 'undefined' ? globalThis.Arcade : null;
+  return !!(a && a.isDemo && a.isDemo());
+}
+const saveKey = () => (isDemo() ? SAVE_KEY + '-demo' : SAVE_KEY);
+
 const round2 = (n) => Math.round(n * 100) / 100;
 
 /* Permanent unlocks bought with Markers in the arcade's progression menu.
@@ -7816,8 +7910,8 @@ class Game {
     const G = new Game();
     G.seed = seed || randomSeed();
     G.rng = makeRng(G.seed);
-    G.wheelId = opts.wheelId || 'house';
-    G.stakeId = opts.stakeId || 'white';
+    G.wheelId = isDemo() ? 'house' : (opts.wheelId || 'house');
+    G.stakeId = isDemo() ? 'white' : (opts.stakeId || 'white');
     G.mods = { ...wheelMods(G.wheelId) };
     G.stake = stakeMods(G.stakeId);
 
@@ -7869,14 +7963,14 @@ class Game {
 
   save() {
     if (this.finished) return;
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify(this.toJSON())); } catch (e) { /* no storage */ }
+    try { localStorage.setItem(saveKey(), JSON.stringify(this.toJSON())); } catch (e) { /* no storage */ }
   }
 
-  static clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* no storage */ } }
+  static clearSave() { try { localStorage.removeItem(saveKey()); } catch (e) { /* no storage */ } }
 
   static load() {
     try {
-      const raw = localStorage.getItem(SAVE_KEY);
+      const raw = localStorage.getItem(saveKey());
       if (!raw) return null;
       const data = JSON.parse(raw);
       const G = new Game();
@@ -8489,6 +8583,7 @@ class Game {
   }
 
   goEndless() {
+    if (isDemo()) return;            // endless is the full game's
     this.endless = true;
     this.finished = false;
     this.ante++;
@@ -9218,25 +9313,34 @@ function titleScreen() {
   const saved = Game.load();
   if (!wheelUnlocked(titleWheel)) titleWheel = 'house';
   if (!stakeUnlocked(titleStake)) titleStake = 'white';
+  // A demo plays the House Wheel at White Stake; the rest are shown as the full game's.
+  const demo = isDemo();
+  if (demo) { titleWheel = 'house'; titleStake = 'white'; }
 
   const seedInput = h('input.seedinput', { placeholder: 'seed (optional)' });
 
   const wheelRow = h('div.pickrow', null, ...WHEELS.map((w) => {
-    const locked = !wheelUnlocked(w.id);
-    return h('div.pick' + (titleWheel === w.id ? '.on' : '') + (locked ? '.locked' : ''), {
-      tip: { title: w.name, body: locked ? 'Locked.' : w.text, foot: locked ? w.unlockText : null },
+    const held = demo && w.id !== 'house';
+    const locked = held || !wheelUnlocked(w.id);
+    const named = !locked || held;
+    return h('div.pick' + (titleWheel === w.id ? '.on' : '') + (locked ? '.locked' : '') + (held ? '.held' : ''), {
+      tip: { title: w.name, body: named ? w.text : 'Locked.',
+             foot: held ? globalThis.Arcade.demo.note : locked ? w.unlockText : null },
       onclick: () => { if (locked) { Sfx.deny(); return; } titleWheel = w.id; Sfx.ui(); render(); }
-    }, h('div.pickglyph', null, locked ? '·' : w.glyph), h('div.picklbl', null, locked ? 'Locked' : w.name));
+    }, h('div.pickglyph', null, named ? w.glyph : '·'), h('div.picklbl', null, named ? w.name : 'Locked'),
+    held && globalThis.Arcade.ui.fullGameBadge());
   }));
 
   const stakeRow = h('div.pickrow', null, ...STAKES.map((s) => {
-    const locked = !stakeUnlocked(s.id);
+    const held = demo && s.id !== 'white';
+    const locked = held || !stakeUnlocked(s.id);
     return h('div.pick.stake' + (titleStake === s.id ? '.on' : '') + (locked ? '.locked' : ''), {
       style: { '--stake': s.colour },
-      tip: { title: s.name, body: locked ? 'Locked.' : s.text, foot: locked ? 'Win a run on the stake below to unlock this one' : null },
+      tip: { title: s.name, body: held || !locked ? s.text : 'Locked.',
+             foot: held ? globalThis.Arcade.demo.note : locked ? 'Win a run on the stake below to unlock this one' : null },
       onclick: () => { if (locked) { Sfx.deny(); return; } titleStake = s.id; Sfx.ui(); render(); }
     }, h('div.stakedot'), h('div.picklbl', null, s.name.replace(' Stake', '')));
-  }));
+  }), demo && globalThis.Arcade.ui.fullGameBadge());
 
   const start = (seed) => bindGame(Game.newRun(seed, { wheelId: titleWheel, stakeId: titleStake }));
 
@@ -9809,7 +9913,9 @@ function pickFromPack(opt) {
 function unlockNotes() {
   if (!G.unlocked || !G.unlocked.length) return null;
   return h('div.unlocks', null, ...G.unlocked.map((u) => h('div.unlockline', null,
-    'Unlocked: ' + (u.kind === 'wheel' ? WHEELS_BY_ID[u.id].name : STAKES_BY_ID[u.id].name))));
+    'Unlocked: ' + (u.kind === 'wheel' ? WHEELS_BY_ID[u.id].name : STAKES_BY_ID[u.id].name) +
+    // in a demo they are earned all the same, and waiting in the full game
+    (isDemo() ? ' — yours in the full game' : ''))));
 }
 
 function gameOverScreen() {
@@ -9841,7 +9947,11 @@ function winScreen() {
       `Best single spin: ${fmt(G.stats.best)}.`),
     unlockNotes(),
     h('div.btnrow', null,
-      h('button.btn.big.gold', { onclick: () => { Sfx.ui(); G.goEndless(); } }, 'Keep playing'),
+      isDemo()
+        // endless is the full game's: shown, so the player knows it is there
+        ? h('button.btn.big.gold.held', { disabled: true, title: globalThis.Arcade.demo.note },
+            h('span.held-label', null, 'Keep playing'), globalThis.Arcade.ui.fullGameBadge())
+        : h('button.btn.big.gold', { onclick: () => { Sfx.ui(); G.goEndless(); } }, 'Keep playing'),
       h('button.btn.big', { onclick: () => bindGame(null) }, 'Back to title')),
     arcadeRow());
 }

@@ -811,3 +811,15 @@ body.cb .pocket-pick.black::after {
 @media (max-width: 640px) {
   .helprule { grid-template-columns: 1fr; gap: 4px; }
 }
+
+/* ---- Demo builds ---------------------------------------------------------
+   A choice the demo holds back (a wheel, a stake, endless) is shown, not
+   hidden: dimmed like a locked one, with the arcade's "Full game" pill at
+   full strength. */
+.pick.held { opacity: 1; }
+.pick.held > :not(.ac-fullgame) { opacity: .4; }
+.pick.held .ac-fullgame { margin-top: 4px; }
+.pickrow > .ac-fullgame { align-self: center; }
+.btn.held:disabled { opacity: 1; }
+.btn.held .held-label { opacity: .45; }
+.btn.held .ac-fullgame { margin-left: 8px; }

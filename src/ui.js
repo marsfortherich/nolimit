@@ -2,7 +2,7 @@
 // game state through Game methods.
 
 import { SPOTS, ENHANCEMENTS, BLINDS, colourOf, spotCovers, spotNumbers } from './data.js';
-import { Game, fmt, FINAL_ANTE, FULL_WHEEL } from './engine.js';
+import { Game, fmt, FINAL_ANTE, FULL_WHEEL, isDemo } from './engine.js';
 import { TOKENS, TOKENS_BY_ID, RARITY, tokenDef, tokenText } from './tokens.js';
 import { OMENS_BY_ID, omenDef } from './omens.js';
 import { BOSSES_BY_ID } from './bosses.js';
@@ -367,25 +367,34 @@ function titleScreen() {
   const saved = Game.load();
   if (!wheelUnlocked(titleWheel)) titleWheel = 'house';
   if (!stakeUnlocked(titleStake)) titleStake = 'white';
+  // A demo plays the House Wheel at White Stake; the rest are shown as the full game's.
+  const demo = isDemo();
+  if (demo) { titleWheel = 'house'; titleStake = 'white'; }
 
   const seedInput = h('input.seedinput', { placeholder: 'seed (optional)' });
 
   const wheelRow = h('div.pickrow', null, ...WHEELS.map((w) => {
-    const locked = !wheelUnlocked(w.id);
-    return h('div.pick' + (titleWheel === w.id ? '.on' : '') + (locked ? '.locked' : ''), {
-      tip: { title: w.name, body: locked ? 'Locked.' : w.text, foot: locked ? w.unlockText : null },
+    const held = demo && w.id !== 'house';
+    const locked = held || !wheelUnlocked(w.id);
+    const named = !locked || held;
+    return h('div.pick' + (titleWheel === w.id ? '.on' : '') + (locked ? '.locked' : '') + (held ? '.held' : ''), {
+      tip: { title: w.name, body: named ? w.text : 'Locked.',
+             foot: held ? globalThis.Arcade.demo.note : locked ? w.unlockText : null },
       onclick: () => { if (locked) { Sfx.deny(); return; } titleWheel = w.id; Sfx.ui(); render(); }
-    }, h('div.pickglyph', null, locked ? '·' : w.glyph), h('div.picklbl', null, locked ? 'Locked' : w.name));
+    }, h('div.pickglyph', null, named ? w.glyph : '·'), h('div.picklbl', null, named ? w.name : 'Locked'),
+    held && globalThis.Arcade.ui.fullGameBadge());
   }));
 
   const stakeRow = h('div.pickrow', null, ...STAKES.map((s) => {
-    const locked = !stakeUnlocked(s.id);
+    const held = demo && s.id !== 'white';
+    const locked = held || !stakeUnlocked(s.id);
     return h('div.pick.stake' + (titleStake === s.id ? '.on' : '') + (locked ? '.locked' : ''), {
       style: { '--stake': s.colour },
-      tip: { title: s.name, body: locked ? 'Locked.' : s.text, foot: locked ? 'Win a run on the stake below to unlock this one' : null },
+      tip: { title: s.name, body: held || !locked ? s.text : 'Locked.',
+             foot: held ? globalThis.Arcade.demo.note : locked ? 'Win a run on the stake below to unlock this one' : null },
       onclick: () => { if (locked) { Sfx.deny(); return; } titleStake = s.id; Sfx.ui(); render(); }
     }, h('div.stakedot'), h('div.picklbl', null, s.name.replace(' Stake', '')));
-  }));
+  }), demo && globalThis.Arcade.ui.fullGameBadge());
 
   const start = (seed) => bindGame(Game.newRun(seed, { wheelId: titleWheel, stakeId: titleStake }));
 
@@ -958,7 +967,9 @@ function pickFromPack(opt) {
 function unlockNotes() {
   if (!G.unlocked || !G.unlocked.length) return null;
   return h('div.unlocks', null, ...G.unlocked.map((u) => h('div.unlockline', null,
-    'Unlocked: ' + (u.kind === 'wheel' ? WHEELS_BY_ID[u.id].name : STAKES_BY_ID[u.id].name))));
+    'Unlocked: ' + (u.kind === 'wheel' ? WHEELS_BY_ID[u.id].name : STAKES_BY_ID[u.id].name) +
+    // in a demo they are earned all the same, and waiting in the full game
+    (isDemo() ? ' — yours in the full game' : ''))));
 }
 
 function gameOverScreen() {
@@ -990,7 +1001,11 @@ function winScreen() {
       `Best single spin: ${fmt(G.stats.best)}.`),
     unlockNotes(),
     h('div.btnrow', null,
-      h('button.btn.big.gold', { onclick: () => { Sfx.ui(); G.goEndless(); } }, 'Keep playing'),
+      isDemo()
+        // endless is the full game's: shown, so the player knows it is there
+        ? h('button.btn.big.gold.held', { disabled: true, title: globalThis.Arcade.demo.note },
+            h('span.held-label', null, 'Keep playing'), globalThis.Arcade.ui.fullGameBadge())
+        : h('button.btn.big.gold', { onclick: () => { Sfx.ui(); G.goEndless(); } }, 'Keep playing'),
       h('button.btn.big', { onclick: () => bindGame(null) }, 'Back to title')),
     arcadeRow());
 }

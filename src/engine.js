@@ -26,6 +26,16 @@ export const FULL_WHEEL = 37;
 
 const SAVE_KEY = 'no-limit-save-v2';
 
+/* A demo build (Arcade.isDemo) plays the base run: the House Wheel at White
+   Stake, to the eighth ante and no further. Its run lives under a key of its
+   own, so a full-game run already in this browser is neither resumed into
+   the demo nor thrown away by it. Asked at each call, never cached. */
+export function isDemo() {
+  const a = typeof globalThis !== 'undefined' ? globalThis.Arcade : null;
+  return !!(a && a.isDemo && a.isDemo());
+}
+const saveKey = () => (isDemo() ? SAVE_KEY + '-demo' : SAVE_KEY);
+
 const round2 = (n) => Math.round(n * 100) / 100;
 
 /* Permanent unlocks bought with Markers in the arcade's progression menu.
@@ -131,8 +141,8 @@ export class Game {
     const G = new Game();
     G.seed = seed || randomSeed();
     G.rng = makeRng(G.seed);
-    G.wheelId = opts.wheelId || 'house';
-    G.stakeId = opts.stakeId || 'white';
+    G.wheelId = isDemo() ? 'house' : (opts.wheelId || 'house');
+    G.stakeId = isDemo() ? 'white' : (opts.stakeId || 'white');
     G.mods = { ...wheelMods(G.wheelId) };
     G.stake = stakeMods(G.stakeId);
 
@@ -184,14 +194,14 @@ export class Game {
 
   save() {
     if (this.finished) return;
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify(this.toJSON())); } catch (e) { /* no storage */ }
+    try { localStorage.setItem(saveKey(), JSON.stringify(this.toJSON())); } catch (e) { /* no storage */ }
   }
 
-  static clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* no storage */ } }
+  static clearSave() { try { localStorage.removeItem(saveKey()); } catch (e) { /* no storage */ } }
 
   static load() {
     try {
-      const raw = localStorage.getItem(SAVE_KEY);
+      const raw = localStorage.getItem(saveKey());
       if (!raw) return null;
       const data = JSON.parse(raw);
       const G = new Game();
@@ -804,6 +814,7 @@ export class Game {
   }
 
   goEndless() {
+    if (isDemo()) return;            // endless is the full game's
     this.endless = true;
     this.finished = false;
     this.ante++;

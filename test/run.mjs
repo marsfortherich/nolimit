@@ -653,6 +653,55 @@ test('an endless run is counted once, when it is won', () => {
   }
 });
 
+// A demo page carries <meta name="arcade-demo">, and Arcade.isDemo() says so.
+// The demo plays the House Wheel at White Stake to the win at ante 8, holds
+// endless back, and saves under a key of its own.
+test('a demo plays the House Wheel at White Stake, and holds endless back', () => {
+  const store = { 'no-limit-save-v2': '{"seed":"FULLRUN"}' };
+  const hadStorage = 'localStorage' in globalThis;
+  const oldStorage = globalThis.localStorage;
+  globalThis.localStorage = {
+    getItem: (k) => (k in store ? store[k] : null),
+    setItem: (k, v) => { store[k] = String(v); },
+    removeItem: (k) => { delete store[k]; }
+  };
+  globalThis.Arcade = {
+    isDemo: () => true,
+    progress: { bonus: () => 0, recordRun: () => {}, recordBest: () => {} },
+    submitScore: () => {}
+  };
+  try {
+    eq(Game.load(), null, 'the full run is not offered to the demo');
+    const G = Game.newRun('DEMO', { wheelId: 'american', stakeId: 'gold' });
+    eq(G.wheelId, 'house', 'wheel');
+    eq(G.stakeId, 'white', 'stake');
+    G.save();
+    assert(store['no-limit-save-v2-demo'], 'the demo run saves under its own key');
+    eq(store['no-limit-save-v2'], '{"seed":"FULLRUN"}', 'the full run is untouched');
+
+    G.ante = 8;
+    G.blindIndex = 2;
+    G.startBlind();
+    G.round.score = G.round.target;
+    G.winRound();
+    G.toShop();
+    G.nextBlind();
+    eq(G.screen, 'win', 'the demo still wins at ante 8');
+    G.goEndless();
+    eq(G.ante, 8, 'no ninth ante');
+    eq(G.endless, false, 'not endless');
+    Game.clearSave();
+    eq(store['no-limit-save-v2'], '{"seed":"FULLRUN"}', 'clearing the demo run leaves the full one');
+
+    globalThis.Arcade.isDemo = () => false;
+    const F = Game.newRun('FULL', { wheelId: 'american', stakeId: 'gold' });
+    eq(F.wheelId, 'american', 'switched off, it is the full game');
+  } finally {
+    delete globalThis.Arcade;
+    if (hadStorage) globalThis.localStorage = oldStorage; else delete globalThis.localStorage;
+  }
+});
+
 // ---------------------------------------------------------------------------
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
