@@ -130,6 +130,8 @@ export function attach(game) {
       ui: () => Sfx.ui(), success: () => Sfx.coin(),
       deny: () => Sfx.deny(), achievement: () => Sfx.win()
     });
+    // the bar's Settings: this game's own modal, over the table, title or shop
+    if (arcade.ui.setSettings) arcade.ui.setSettings(() => { resumeAudio(); showSettings(); });
   }
   bindGame(game);
 }

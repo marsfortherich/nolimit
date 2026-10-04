@@ -8,8 +8,8 @@
 <meta name="description" content="A roulette roguelike. Place your chips, spin, and build a machine out of Tokens while carving up the wheel itself." />
 <meta name="theme-color" content="#0d3b2a" />
 <meta name="color-scheme" content="dark" />
-<meta name="app-version" content="1.0.5" />
-<meta name="app-assets" content="6a4bcc3f16f0ff60">
+<meta name="app-version" content="1.0.6" />
+<meta name="app-assets" content="f8f80cc8b971dadd">
 <meta property="og:type" content="website" />
 <meta property="og:title" content="No Limit — a roulette roguelike" />
 <meta property="og:description" content="Place your chips, spin, and beat the table. Build a machine out of Tokens, carve up the wheel itself, and take eight antes off the house." />
@@ -3927,6 +3927,40 @@ body.cb .pocket-pick.black::after {
   function setSound(impl) {
     Object.keys(impl || {}).forEach(function (k) { sound[k] = impl[k]; });
   }
+  /**
+   * The game's own settings, from the bar.
+   *
+   * Each game already has a settings screen, but it sat behind its own menu —
+   * Options in One More Roll, the menu in PEGFALL, the sidebar in No Limit —
+   * so changing the volume mid-run meant finding it. A game hands its opener
+   * here: Arcade.ui.setSettings(open). The bar then carries a Settings button
+   * that calls it; the screen, its look and what Back returns to stay the
+   * game's. The hub has nothing to set, registers nothing, and shows no button.
+   */
+  var settingsOpener = null;
+  function setSettings(open) {
+    settingsOpener = typeof open === 'function' ? open : null;
+    placeSettingsButton();
+  }
+  function placeSettingsButton() {
+    if (!bar) return;
+    var b = bar._settings;
+    if (!settingsOpener) { if (b) b.style.display = 'none'; return; }
+    if (!b) {
+      b = el('button', 'ac-bar__btn', 'Settings');
+      b.type = 'button';
+      b.title = 'Sound, speed and display';
+      b.dataset.ac = 'settings';
+      b.addEventListener('click', function () {
+        play('ui');
+        try { if (settingsOpener) settingsOpener(); } catch (e) { /* the game's screen, not ours to break */ }
+      });
+      bar.insertBefore(b, bar._account);
+      bar._settings = b;
+    }
+    b.style.display = '';
+  }
+
   function play(name) {
     var fn = sound[name];
     if (typeof fn !== 'function') return;
@@ -4916,6 +4950,7 @@ body.cb .pocket-pick.black::after {
     });
     bar.appendChild(account);
     bar._account = account;
+    placeSettingsButton();     // a game may have registered before the bar mounted
 
     doc.body.appendChild(bar);
     refreshBar();
@@ -5030,6 +5065,7 @@ body.cb .pocket-pick.black::after {
   Arcade.ui = {
     mountBar: mountBar,
     setSound: setSound,
+    setSettings: setSettings,
     countUp: countUp,
     flash: flash,
     motionOK: motionOK,
@@ -8904,6 +8940,8 @@ function attach(game) {
       ui: () => Sfx.ui(), success: () => Sfx.coin(),
       deny: () => Sfx.deny(), achievement: () => Sfx.win()
     });
+    // the bar's Settings: this game's own modal, over the table, title or shop
+    if (arcade.ui.setSettings) arcade.ui.setSettings(() => { resumeAudio(); showSettings(); });
   }
   bindGame(game);
 }
