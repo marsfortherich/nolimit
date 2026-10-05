@@ -79,6 +79,13 @@ jobs:
           test -f shared/js/arcade.js || {
             echo "::error::shared/ is missing — run tools/sync-shared.py in the arcade and commit"; exit 1; }
 
+      # The website is the demo (DEMO_PLAN.md at the arcade root). This repo
+      # stays the full game -- the Steam build is assembled from it -- so the
+      # page is marked here, at publish time, after every check above has read
+      # it unmarked. Remove this step to publish the full game again.
+      - name: Publish as the demo
+        run: python3 shared/tools/mark-demo.py deploy/index.html
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: deploy

@@ -8,8 +8,8 @@
 <meta name="description" content="A roulette roguelike. Place your chips, spin, and build a machine out of Tokens while carving up the wheel itself." />
 <meta name="theme-color" content="#0d3b2a" />
 <meta name="color-scheme" content="dark" />
-<meta name="app-version" content="1.0.7" />
-<meta name="app-assets" content="f52b9d4a12bddce2">
+<meta name="app-version" content="1.0.8" />
+<meta name="app-assets" content="c72444dff78b5c94">
 <meta property="og:type" content="website" />
 <meta property="og:title" content="No Limit — a roulette roguelike" />
 <meta property="og:description" content="Place your chips, spin, and beat the table. Build a machine out of Tokens, carve up the wheel itself, and take eight antes off the house." />
@@ -2156,7 +2156,18 @@ body.cb .pocket-pick.black::after {
     })(),
     label: 'Full game',
     note: 'Available in the full game: Dealer’s Choice on Steam.',
-    storeUrl: 'https://store.steampowered.com/app/5377090/'
+    storeUrl: 'https://store.steampowered.com/app/5377090/',
+    /* Until the store page is public its URL only redirects to Steam's front
+       page, so the demo's links go to the studio's page about the game
+       instead. Set true the day the store page is live. */
+    storeLive: false,
+    comingSoonUrl: 'https://marsindustries.dev/#dealers-choice'
+  };
+  /** Where a demo's "get the full game" links point, and what they say. */
+  Arcade.demo.storeLink = function () {
+    return Arcade.demo.storeLive
+      ? { href: Arcade.demo.storeUrl, label: 'Full game on Steam' }
+      : { href: Arcade.demo.comingSoonUrl, label: 'Coming soon to Steam' };
   };
   Arcade.isDemo = function () { return !!(Arcade.demo && Arcade.demo.active); };
 
@@ -5099,9 +5110,10 @@ body.cb .pocket-pick.black::after {
 
     /* A demo's way to the full game, beside the way home. A link, so the
        desktop build opens it in the player's browser like any other. */
-    if (Arcade.isDemo && Arcade.isDemo() && Arcade.demo.storeUrl) {
-      var store = el('a', 'ac-btn ac-btn--sm ac-btn--store', 'Full game on Steam');
-      store.href = Arcade.demo.storeUrl;
+    if (Arcade.isDemo && Arcade.isDemo() && Arcade.demo.storeLink) {
+      var to = Arcade.demo.storeLink();
+      var store = el('a', 'ac-btn ac-btn--sm ac-btn--store', to.label);
+      store.href = to.href;
       store.target = '_blank';
       store.rel = 'noopener noreferrer';
       store.title = Arcade.demo.note;
