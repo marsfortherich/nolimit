@@ -942,6 +942,14 @@ export class Game {
   openPack(packId, free) {
     const def = PACKS_BY_ID[packId];
     if (!def) return;
+    /* One pack at a time. A second one -- Silver Tongue's two tags can both
+       open packs -- used to replace the first before it could be picked from,
+       and remember 'pack' as the screen to return to, which closePack turned
+       into a shop that did not exist. It waits its turn instead. */
+    if (this.pendingPack) {
+      (this.packQueue = this.packQueue || []).push({ packId, free: !!free });
+      return;
+    }
     const size = def.size + (this.hasCharter('bulkbuyer') ? 1 : 0);
     const owned = new Set(this.tokens.map((t) => t.id));
     const options = [];
@@ -1002,6 +1010,9 @@ export class Game {
     const back = this.pendingPack ? this.pendingPack.returnTo : 'shop';
     this.pendingPack = null;
     this.screen = back === 'pack' ? 'shop' : back;
+    // the next waiting pack opens over the same screen this one would return to
+    const next = this.packQueue && this.packQueue.shift();
+    if (next) { this.openPack(next.packId, next.free); return; }
     this.emit();
   }
 

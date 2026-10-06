@@ -1,7 +1,7 @@
 // Meta-progression: what the player has unlocked and how their runs have gone.
 // Kept in its own storage key so abandoning a run never costs progress.
 
-const PROFILE_KEY = 'no-limit-profile-v1';
+export const PROFILE_KEY = 'no-limit-profile-v1';
 
 const EMPTY = {
   version: 1,
@@ -110,8 +110,10 @@ export function extendRun(summary, already) {
 
 /** A stable seed for the calendar day, so "daily run" means the same to everyone. */
 export function dailySeed(date = new Date()) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
+  // UTC, not the player's own calendar: a local date gave players in
+  // different time zones different "daily" runs for part of every day.
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(date.getUTCDate()).padStart(2, '0');
   return `DAILY-${y}${m}${d}`;
 }

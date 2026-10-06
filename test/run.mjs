@@ -16,7 +16,7 @@ import { STAKES } from '../src/stakes.js';
 import { WHEELS } from '../src/wheels.js';
 import { spinPlan, ballRadius, ballRattle, mod360, WHEEL_GEOM } from '../src/wheelview.js';
 import { triggerFreq } from '../src/audio.js';
-import { Profile } from '../src/profile.js';
+import { Profile, dailySeed } from '../src/profile.js';
 
 let passed = 0;
 const failures = [];
@@ -700,6 +700,33 @@ test('a demo plays the House Wheel at White Stake, and holds endless back', () =
     delete globalThis.Arcade;
     if (hadStorage) globalThis.localStorage = oldStorage; else delete globalThis.localStorage;
   }
+});
+
+// Silver Tongue's two tags can both open a pack. The second used to replace
+// the first before it could be picked from, and leave the player on a shop
+// screen with no shop behind it.
+test('two packs at once queue, and closing them returns to the table', () => {
+  const G = Game.newRun('TWOPACKS');
+  const packTags = TAGS.filter((t) => t.grantsPack).map((t) => t.id);
+  assert(packTags.length >= 2, 'need two pack-granting tags');
+  eq(G.screen, 'blind', 'at blind select');
+  G.takeTag({ id: packTags[0] });
+  const first = G.pendingPack.packId;
+  G.takeTag({ id: packTags[1] });
+  eq(G.pendingPack.packId, first, 'the first pack is still the one open');
+  G.closePack();
+  eq(G.screen, 'pack', 'the second pack opens next');
+  assert(G.pendingPack && G.pendingPack.packId !== first, 'and it is the second one');
+  eq(G.pendingPack.returnTo, 'blind', 'returning where the first would have');
+  G.closePack();
+  eq(G.screen, 'blind', 'back at blind select');
+  eq(G.shop, null, 'no phantom shop');
+});
+
+test('the daily seed is the same everywhere at the same moment', () => {
+  // 23:30 UTC on the 5th is already the 6th east of Greenwich
+  eq(dailySeed(new Date('2026-10-05T23:30:00Z')), 'DAILY-20261005');
+  eq(dailySeed(new Date('2026-10-06T00:30:00Z')), 'DAILY-20261006');
 });
 
 // ---------------------------------------------------------------------------

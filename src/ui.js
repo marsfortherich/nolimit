@@ -12,7 +12,7 @@ import { STAKES, STAKES_BY_ID, STICKERS } from './stakes.js';
 import { WHEELS, WHEELS_BY_ID } from './wheels.js';
 import { tagDef } from './tags.js';
 import { PACKS_BY_ID, FATES_BY_ID } from './packs.js';
-import { Profile, loadProfile, stakeUnlocked, wheelUnlocked, dailySeed, resetProfile } from './profile.js';
+import { Profile, loadProfile, stakeUnlocked, wheelUnlocked, dailySeed, resetProfile, PROFILE_KEY } from './profile.js';
 import { Settings, loadSettings, setSetting } from './settings.js';
 import { Sfx, resumeAudio, resetPitch, audioStats, playMusic, syncMusic } from './audio.js';
 import { fxFloat, fxFlash, fxShake, fxCountUp, fxPop, fxBurst, fxWait, fxClear } from './fx.js';
@@ -121,6 +121,9 @@ let hiddenShown = false;             // The Whisper: has the result been reveale
 export function attach(game) {
   loadSettings();
   loadProfile();
+  // Another tab saved the profile: take it, or this tab's next save would
+  // write back the copy it loaded and erase what that tab earned.
+  window.addEventListener('storage', (e) => { if (e.key === PROFILE_KEY) loadProfile(); });
   // Shared account + leaderboard layer: resolves who is signed in before the
   // title screen draws.
   const arcade = typeof globalThis !== 'undefined' ? globalThis.Arcade : null;
@@ -1199,12 +1202,18 @@ function showCollection() {
 
 window.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  // Keys pressed over the arcade's dialogs are not the table's: Space used to
+  // spin the wheel behind one.
+  const arcade = globalThis.Arcade;
+  if (arcade && arcade.ui && arcade.ui.claimsKeys && arcade.ui.claimsKeys(e)) return;
   if (e.key === 'Escape') {
     if (!$('modal').hidden) closeModal();
     else if (G && G.round && G.round.phase === 'betting') G.clearBets();
     return;
   }
   if (!G) return;
+  // nor over this game's own modal (the wheel, settings, records)
+  if (!$('modal').hidden) return;
   resumeAudio();
   if (e.code === 'Space') {
     e.preventDefault();
