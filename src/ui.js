@@ -89,6 +89,13 @@ function tip(el, data) {
 
 function hideTip() { const t = $('tooltip'); if (t) t.hidden = true; }
 
+/** A finger rather than a mouse: hints say tap and long-press (arcade-ui.js
+    turns a long press into the right-click that takes a chip back). */
+function touch() {
+  const a = typeof globalThis !== 'undefined' ? globalThis.Arcade : null;
+  return !!(a && a.ui && a.ui.isTouch && a.ui.isTouch());
+}
+
 /** The dealer, if the arcade layer is present. */
 function dealer() {
   const a = typeof globalThis !== 'undefined' ? globalThis.Arcade : null;
@@ -345,7 +352,7 @@ function omenCard(om, i) {
   const d = omenDef(om);
   const usable = G.omenUsable(i);
   return h('div.card.small.omen' + (usable ? '' : '.disabled'), {
-    tip: { title: d.name, body: d.text, foot: usable ? 'Click to use · right-click to sell' : 'Cannot be used right now' },
+    tip: { title: d.name, body: d.text, foot: usable ? (touch() ? 'Tap to use · long-press to sell' : 'Click to use · right-click to sell') : 'Cannot be used right now' },
     onclick: () => { if (usable) { Sfx.ui(); beginOmen(i); } else Sfx.deny(); },
     oncontextmenu: async (e) => {
       e.preventDefault();
@@ -426,7 +433,9 @@ function titleScreen() {
       h('button.btn.sm', { onclick: showSettings }, 'Settings'),
       h('button.btn.sm', { onclick: showHelp }, 'How to Play')),
     arcadeRow(),
-    h('div.hint', null, 'Click a spot to add a chip · right-click to take one back · Space to spin'));
+    h('div.hint', null, touch()
+      ? 'Tap a spot to add a chip · long-press to take one back'
+      : 'Click a spot to add a chip · right-click to take one back · Space to spin'));
 }
 
 // ---------------------------------------------------------------------------
@@ -1087,7 +1096,9 @@ function showHelp() {
 
   openModal(modalBox('How to play',
     h('div.helprules', null,
-      rule('Place chips', 'Click a spot on the felt to put a chip down, right-click to take one back. ' +
+      rule('Place chips', (touch()
+        ? 'Tap a spot on the felt to put a chip down, long-press to take one back. '
+        : 'Click a spot on the felt to put a chip down, right-click to take one back. ') +
         'You have a fixed number of chips each round — spreading them wide is safer, stacking them is not.'),
       rule('Spin', 'The ball lands in one pocket. Every bet covering that pocket pays: ' +
         '<b>chips × multiplier</b>, totalled into your round score.'),

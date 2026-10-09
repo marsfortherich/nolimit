@@ -823,3 +823,38 @@ body.cb .pocket-pick.black::after {
 .btn.held:disabled { opacity: 1; }
 .btn.held .held-label { opacity: .45; }
 .btn.held .ac-fullgame { margin-left: 8px; }
+
+/* ---- Phones ----------------------------------------------------------------
+   Below 640px the table is one column and the page scrolls. It used to keep
+   the desktop's sidebar beside the play area, which left the wheel and the
+   felt about 150px wide, and the title panel ran off the screen. The sidebar
+   becomes a compact block above the table -- table and score side by side,
+   then the stats -- the token bar scrolls sideways, and the three tables of
+   an ante stack. None of this reaches the desktop or Steam windows. */
+@media (max-width: 640px) {
+  html, body { height: auto; min-height: 100%; overflow-y: auto; }
+  #app {
+    height: auto;
+    min-height: 100%;
+    padding: calc(var(--ac-bar-h) + 10px) 8px 8px;
+    gap: 8px;
+  }
+  /* The sidebar's pieces join the page grid, so what a spin needs -- the
+     table, the score, the four stats -- sits above the wheel and the felt,
+     and the rest (omens, wheel and settings buttons, seed, abandon) follows
+     below them. Only while it is shown: the title screen hides it. */
+  #app { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; }
+  #sidebar:not([hidden]) { display: contents; }
+  #sidebar > * { grid-column: 1 / -1; order: 3; }
+  #sidebar > .blindcard { grid-column: 1; order: 0; }
+  #sidebar > .scorebox { grid-column: 2; order: 0; }
+  #sidebar > .statgrid { order: 1; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  #sidebar > .brand,
+  #sidebar > div:not([class]) { display: none; }
+  #stage { grid-column: 1 / -1; order: 2; min-width: 0; }
+  #tokenbar { padding-right: 8px; overflow-x: auto; min-height: 0; }
+  .blind-choices { grid-template-columns: minmax(0, 1fr); }
+  .titlepanel { width: 100%; }
+  .seedinput { width: min(260px, 100%); }
+  .wheel-svg { max-width: 170px; }
+}
